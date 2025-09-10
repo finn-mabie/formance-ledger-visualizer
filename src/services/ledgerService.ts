@@ -1,151 +1,160 @@
-import { LedgerApi } from '@formancehq/formance-sdk-typescript'
 import { Account, Transaction, Balance, LedgerStats } from '@/types/ledger'
 
-// Mock data for demonstration purposes
-// In a real implementation, you would use the actual Formance SDK
-const MOCK_ACCOUNTS: Account[] = [
-  { address: 'user:alice', metadata: { name: 'Alice Johnson', type: 'customer' } },
-  { address: 'user:bob', metadata: { name: 'Bob Smith', type: 'customer' } },
-  { address: 'user:charlie', metadata: { name: 'Charlie Brown', type: 'merchant' } },
-  { address: 'bank:main', metadata: { name: 'Main Bank Account', type: 'bank' } },
-  { address: 'revenue:sales', metadata: { name: 'Sales Revenue', type: 'revenue' } },
-  { address: 'expense:marketing', metadata: { name: 'Marketing Expenses', type: 'expense' } },
-  { address: 'asset:cash', metadata: { name: 'Cash Account', type: 'asset' } },
-  { address: 'liability:debt', metadata: { name: 'Debt Account', type: 'liability' } },
-]
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'tx_001',
-    timestamp: '2024-01-15T10:30:00Z',
-    reference: 'Payment from Alice',
-    metadata: { type: 'payment', source: 'ecommerce' },
-    postings: [
-      { source: 'user:alice', destination: 'bank:main', amount: 100, asset: 'USD' }
-    ]
-  },
-  {
-    id: 'tx_002',
-    timestamp: '2024-01-15T11:15:00Z',
-    reference: 'Purchase at Store',
-    metadata: { type: 'purchase', source: 'ecommerce' },
-    postings: [
-      { source: 'bank:main', destination: 'user:charlie', amount: 75, asset: 'USD' },
-      { source: 'user:charlie', destination: 'revenue:sales', amount: 75, asset: 'USD' }
-    ]
-  },
-  {
-    id: 'tx_003',
-    timestamp: '2024-01-15T14:20:00Z',
-    reference: 'Marketing Campaign',
-    metadata: { type: 'expense', source: 'accounting' },
-    postings: [
-      { source: 'bank:main', destination: 'expense:marketing', amount: 500, asset: 'USD' }
-    ]
-  },
-  {
-    id: 'tx_004',
-    timestamp: '2024-01-16T09:00:00Z',
-    reference: 'Salary Payment',
-    metadata: { type: 'salary', source: 'banking' },
-    postings: [
-      { source: 'bank:main', destination: 'user:bob', amount: 2500, asset: 'USD' }
-    ]
-  },
-  {
-    id: 'tx_005',
-    timestamp: '2024-01-16T16:45:00Z',
-    reference: 'Gaming Purchase',
-    metadata: { type: 'gaming', source: 'gaming' },
-    postings: [
-      { source: 'user:alice', destination: 'bank:main', amount: 25, asset: 'USD' },
-      { source: 'bank:main', destination: 'revenue:gaming', amount: 25, asset: 'USD' }
-    ]
-  }
-]
-
-const MOCK_BALANCES: Balance[] = [
-  { account: 'user:alice', asset: 'USD', balance: 150 },
-  { account: 'user:bob', asset: 'USD', balance: 2500 },
-  { account: 'user:charlie', asset: 'USD', balance: 75 },
-  { account: 'bank:main', asset: 'USD', balance: 50000 },
-  { account: 'revenue:sales', asset: 'USD', balance: 75 },
-  { account: 'revenue:gaming', asset: 'USD', balance: 25 },
-  { account: 'expense:marketing', asset: 'USD', balance: 500 },
-  { account: 'asset:cash', asset: 'USD', balance: 10000 },
-  { account: 'liability:debt', asset: 'USD', balance: 5000 }
-]
+interface OAuthToken {
+  access_token: string
+  token_type: string
+  expires_in: number
+  expires_at?: number
+}
 
 export class LedgerService {
-  private api: LedgerApi
+  private baseUrl: string
+  private ledgerId: string
+  private clientId: string
+  private clientSecret: string
+  private tokenEndpoint: string
+  private accessToken: OAuthToken | null = null
 
-  constructor(baseUrl: string = 'http://localhost:8080') {
-    // In a real implementation, initialize the Formance SDK
-    // this.api = new LedgerApi({ basePath: baseUrl })
-    this.api = {} as LedgerApi
+  constructor(
+    baseUrl: string = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/ledger/v2',
+    ledgerId: string = 'baas_ledger',
+    clientId: string = '38c6862b-327c-4c7c-b93c-00c0fac5a05f',
+    clientSecret: string = '6881226f-ad85-4206-aa67-ccdd1031dc2b',
+    tokenEndpoint: string = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/auth/oauth/token'
+  ) {
+    this.baseUrl = baseUrl
+    this.ledgerId = ledgerId
+    this.clientId = clientId
+    this.clientSecret = clientSecret
+    this.tokenEndpoint = tokenEndpoint
+  }
+
+  private async getAccessToken(): Promise<string> {
+    // Check if we have a valid token
+    if (this.accessToken && this.accessToken.expires_at && Date.now() < this.accessToken.expires_at) {
+      return this.accessToken.access_token
+    }
+
+    // Request new token
+    const response = await fetch(this.tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get access token: ${response.status} ${response.statusText}`)
+    }
+
+    const tokenData: OAuthToken = await response.json()
+    this.accessToken = {
+      ...tokenData,
+      expires_at: Date.now() + (tokenData.expires_in * 1000) - 60000 // 1 minute buffer
+    }
+
+    return this.accessToken.access_token
+  }
+
+  private async makeRequest(endpoint: string, options: RequestInit = {}) {
+    try {
+      const token = await this.getAccessToken()
+      
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...options.headers,
+        },
+        ...options,
+      })
+      
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+      }
+      
+      return await response.json()
+    } catch (error) {
+      console.error(`API request failed:`, error)
+      throw error
+    }
   }
 
   async getAccounts(): Promise<Account[]> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return MOCK_ACCOUNTS
+    const response = await this.makeRequest(`/${this.ledgerId}/accounts`)
+    return response.data || []
   }
 
   async getTransactions(limit: number = 50): Promise<Transaction[]> {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return MOCK_TRANSACTIONS.slice(0, limit)
+    const response = await this.makeRequest(`/${this.ledgerId}/transactions?limit=${limit}`)
+    return response.data || []
   }
 
   async getBalances(): Promise<Balance[]> {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return MOCK_BALANCES
+    const response = await this.makeRequest(`/${this.ledgerId}/balances`)
+    return response.data || []
   }
 
   async getAccountBalance(account: string): Promise<Balance | null> {
-    await new Promise(resolve => setTimeout(resolve, 200))
-    return MOCK_BALANCES.find(b => b.account === account) || null
+    const response = await this.makeRequest(`/${this.ledgerId}/balances?account=${account}`)
+    const balances = response.data || []
+    return balances.length > 0 ? balances[0] : null
   }
 
   async getStats(): Promise<LedgerStats> {
-    await new Promise(resolve => setTimeout(resolve, 200))
+    const [accountsResponse, transactionsResponse, balancesResponse] = await Promise.all([
+      this.makeRequest(`/${this.ledgerId}/accounts`),
+      this.makeRequest(`/${this.ledgerId}/transactions`),
+      this.makeRequest(`/${this.ledgerId}/balances`)
+    ])
+
+    const accounts = accountsResponse.data || []
+    const transactions = transactionsResponse.data || []
+    const balances = balancesResponse.data || []
+
+    const totalVolume = transactions.reduce((sum: number, tx: Transaction) => 
+      sum + tx.postings.reduce((txSum: number, p: any) => txSum + p.amount, 0), 0)
+
+    const activeAccounts = accounts.filter((a: Account) => 
+      balances.some((b: Balance) => b.account === a.address && b.balance > 0)
+    ).length
+
     return {
-      totalAccounts: MOCK_ACCOUNTS.length,
-      totalTransactions: MOCK_TRANSACTIONS.length,
-      totalVolume: MOCK_TRANSACTIONS.reduce((sum, tx) => 
-        sum + tx.postings.reduce((txSum, p) => txSum + p.amount, 0), 0),
-      activeAccounts: MOCK_ACCOUNTS.filter(a => 
-        MOCK_BALANCES.some(b => b.account === a.address && b.balance > 0)
-      ).length
+      totalAccounts: accounts.length,
+      totalTransactions: transactions.length,
+      totalVolume,
+      activeAccounts
     }
   }
 
   async createTransaction(postings: any[], reference?: string, metadata?: any): Promise<Transaction> {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    const newTransaction: Transaction = {
-      id: `tx_${Date.now()}`,
-      timestamp: new Date().toISOString(),
+    const transactionData = {
+      postings,
       reference,
-      metadata,
-      postings
+      metadata
     }
 
-    MOCK_TRANSACTIONS.unshift(newTransaction)
-    return newTransaction
+    const response = await this.makeRequest(`/${this.ledgerId}/transactions`, {
+      method: 'POST',
+      body: JSON.stringify(transactionData)
+    })
+
+    return response.data
   }
 
   async getTransactionsByAccount(account: string): Promise<Transaction[]> {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return MOCK_TRANSACTIONS.filter(tx => 
-      tx.postings.some(p => p.source === account || p.destination === account)
-    )
+    const response = await this.makeRequest(`/${this.ledgerId}/transactions?account=${account}`)
+    return response.data || []
   }
 
   async getTransactionsByType(type: string): Promise<Transaction[]> {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return MOCK_TRANSACTIONS.filter(tx => 
-      tx.metadata?.type === type || tx.metadata?.source === type
-    )
+    const response = await this.makeRequest(`/${this.ledgerId}/transactions?metadata.type=${type}`)
+    return response.data || []
   }
 }
 

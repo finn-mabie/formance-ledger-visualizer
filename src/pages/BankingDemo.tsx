@@ -1,18 +1,17 @@
-import { useState } from 'react'
-import { useTransactionsByType } from '@/hooks/useLedger'
+import { useTransactionsByType, useStats, useBalances } from '@/hooks/useLedger'
 import { TransactionList } from '@/components/TransactionList'
 import { StatsCard } from '@/components/StatsCard'
+import { DualPanelLayout } from '@/components/DualPanelLayout'
+import { TransactionForm } from '@/components/TransactionForm'
+import { QuickActions } from '@/components/QuickActions'
 import { 
-  Building2, 
   CreditCard, 
   Users, 
   TrendingUp,
   DollarSign,
-  ArrowLeft,
   Shield,
   Clock
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 
 const accountGrowthData = [
@@ -33,30 +32,41 @@ const transactionTypesData = [
 ]
 
 export function BankingDemo() {
-  const { transactions: salaryTransactions } = useTransactionsByType('salary')
-  const { transactions: transferTransactions } = useTransactionsByType('transfer')
+  const { transactions: salaryTransactions, refresh: refreshSalary } = useTransactionsByType('salary')
+  const { transactions: transferTransactions, refresh: refreshTransfers } = useTransactionsByType('transfer')
+  const { stats, refresh: refreshStats } = useStats()
+  const { balances, refresh: refreshBalances } = useBalances()
   
   const totalDeposits = salaryTransactions.reduce((sum, tx) => 
     sum + tx.postings.reduce((txSum, p) => txSum + p.amount, 0), 0)
   const totalTransfers = transferTransactions.length
   const averageDeposit = salaryTransactions.length > 0 ? totalDeposits / salaryTransactions.length : 0
 
+  const handleTransactionCreated = () => {
+    refreshSalary()
+    refreshTransfers()
+    refreshStats()
+    refreshBalances()
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Link to="/" className="text-gray-400 hover:text-gray-600">
-          <ArrowLeft className="h-6 w-6" />
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <Building2 className="h-8 w-8 mr-3 text-green-600" />
-            Banking Demo
-          </h1>
-          <p className="mt-2 text-lg text-gray-600">
-            Account management, transfers, and financial services with Formance Ledger
-          </p>
-        </div>
+    <DualPanelLayout
+      useCase="banking"
+      title="Banking Demo"
+      description="Account management, transfers, and financial services with Formance Ledger"
+      transactionId="tx_banking_demo"
+    >
+
+      {/* Interactive Transaction Creation */}
+      <div className="space-y-6">
+        <QuickActions 
+          useCase="banking" 
+          onTransactionCreated={handleTransactionCreated}
+        />
+        <TransactionForm 
+          useCase="banking" 
+          onTransactionCreated={handleTransactionCreated}
+        />
       </div>
 
       {/* Key Metrics */}
@@ -70,7 +80,7 @@ export function BankingDemo() {
         />
         <StatsCard
           title="Active Accounts"
-          value="1,900"
+          value={stats?.activeAccounts || 0}
           change="+12.5% from last month"
           changeType="positive"
           icon={<Users className="h-6 w-6" />}
@@ -205,6 +215,6 @@ export function BankingDemo() {
           </div>
         </div>
       </div>
-    </div>
+    </DualPanelLayout>
   )
 }

@@ -8,21 +8,21 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background;
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-white;
   }
   
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800;
   }
   
   .btn-secondary {
-    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 active:bg-gray-400;
+    @apply btn bg-slate-700 text-white hover:bg-slate-600 active:bg-slate-500;
   }
   
   .btn-success {
@@ -38,14 +38,44 @@
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+    @apply bg-slate-900 rounded-lg shadow-sm border border-slate-800 p-6 text-slate-100;
   }
   
   .input {
-    @apply flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex h-10 w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 ring-offset-slate-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
   
   .label {
     @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+  }
+
+  /* Brand utility shortcuts mapping to Tailwind emerald to emulate Formance palette */
+  .bg-primary-600 { @apply bg-emerald-600; }
+  .bg-primary-700 { @apply bg-emerald-700; }
+  .bg-primary-800 { @apply bg-emerald-800; }
+  .text-primary-600 { @apply text-emerald-600; }
+  .ring-primary-500 { @apply ring-emerald-500; }
+}
+
+/* Custom scrollbar for dark/grey UI */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #475569 #0f172a; /* thumb slate-600, track slate-900 */
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #0f172a; /* slate-900 */
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: #475569; /* slate-600 */
+    border-radius: 8px;
+    border: 2px solid #0f172a; /* match track to avoid white outline */
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #64748b; /* slate-500 */
   }
 }

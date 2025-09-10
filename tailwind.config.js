@@ -19,6 +19,7 @@ export default {
           800: '#1e40af',
           900: '#1e3a8a',
         },
+        ring: '#3b82f6',
         success: {
           50: '#f0fdf4',
           100: '#dcfce7',

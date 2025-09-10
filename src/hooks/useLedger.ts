@@ -32,24 +32,27 @@ export function useTransactions(limit?: number) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        setLoading(true)
-        const data = await ledgerService.getTransactions(limit)
-        setTransactions(data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch transactions')
-      } finally {
-        setLoading(false)
-      }
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true)
+      const data = await ledgerService.getTransactions(limit)
+      setTransactions(data)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch transactions')
+      // Set empty array on error to prevent UI issues
+      setTransactions([])
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchTransactions()
   }, [limit])
 
-  return { transactions, loading, error }
+  return { transactions, loading, error, refresh: fetchTransactions }
 }
 
 export function useBalances() {
@@ -57,24 +60,26 @@ export function useBalances() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchBalances = async () => {
-      try {
-        setLoading(true)
-        const data = await ledgerService.getBalances()
-        setBalances(data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch balances')
-      } finally {
-        setLoading(false)
-      }
+  const fetchBalances = async () => {
+    try {
+      setLoading(true)
+      const data = await ledgerService.getBalances()
+      setBalances(data)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch balances:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch balances')
+      setBalances([])
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchBalances()
   }, [])
 
-  return { balances, loading, error }
+  return { balances, loading, error, refresh: fetchBalances }
 }
 
 export function useStats() {
@@ -82,24 +87,26 @@ export function useStats() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true)
-        const data = await ledgerService.getStats()
-        setStats(data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch stats')
-      } finally {
-        setLoading(false)
-      }
+  const fetchStats = async () => {
+    try {
+      setLoading(true)
+      const data = await ledgerService.getStats()
+      setStats(data)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch stats:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch stats')
+      setStats(null)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchStats()
   }, [])
 
-  return { stats, loading, error }
+  return { stats, loading, error, refresh: fetchStats }
 }
 
 export function useAccountTransactions(account: string) {
@@ -134,24 +141,24 @@ export function useTransactionsByType(type: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchTransactions = async () => {
     if (!type) return
-
-    const fetchTransactions = async () => {
-      try {
-        setLoading(true)
-        const data = await ledgerService.getTransactionsByType(type)
-        setTransactions(data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch transactions by type')
-      } finally {
-        setLoading(false)
-      }
+    
+    try {
+      setLoading(true)
+      const data = await ledgerService.getTransactionsByType(type)
+      setTransactions(data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch transactions by type')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchTransactions()
   }, [type])
 
-  return { transactions, loading, error }
+  return { transactions, loading, error, refresh: fetchTransactions }
 }

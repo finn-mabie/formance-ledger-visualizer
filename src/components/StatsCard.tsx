@@ -8,6 +8,7 @@ interface StatsCardProps {
   changeType?: 'positive' | 'negative' | 'neutral'
   icon?: ReactNode
   className?: string
+  loading?: boolean
 }
 
 export function StatsCard({ 
@@ -16,8 +17,24 @@ export function StatsCard({
   change, 
   changeType = 'neutral', 
   icon, 
-  className 
+  className,
+  loading = false
 }: StatsCardProps) {
+  if (loading) {
+    return (
+      <div className={cn("card", className)}>
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div>
+            <div className="h-8 bg-gray-200 rounded animate-pulse w-16"></div>
+            <div className="h-3 bg-gray-200 rounded animate-pulse w-20"></div>
+          </div>
+          <div className="h-6 w-6 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cn("card", className)}>
       <div className="flex items-center justify-between">

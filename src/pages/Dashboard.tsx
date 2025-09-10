@@ -2,13 +2,20 @@ import { useStats, useTransactions, useBalances } from '@/hooks/useLedger'
 import { StatsCard } from '@/components/StatsCard'
 import { TransactionList } from '@/components/TransactionList'
 import { AccountBalance } from '@/components/AccountBalance'
+import { InsightsPanel } from '@/components/InsightsPanel'
+import { TransactionFlow } from '@/components/TransactionFlow'
+import { FinancialIntelligence } from '@/components/FinancialIntelligence'
+import { TransactionForm } from '@/components/TransactionForm'
+import { ErrorAlert } from '@/components/ErrorAlert'
 import { 
   Users, 
   CreditCard, 
   DollarSign, 
   Activity,
   BarChart3,
-  TrendingUp
+  Brain,
+  Zap,
+  Eye
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -56,9 +63,17 @@ const useCases = [
 ]
 
 export function Dashboard() {
-  const { stats, loading: statsLoading } = useStats()
-  const { transactions, loading: transactionsLoading } = useTransactions(10)
-  const { balances, loading: balancesLoading } = useBalances()
+  const { stats, loading: statsLoading, error: statsError, refresh: refreshStats } = useStats()
+  const { transactions, loading: transactionsLoading, error: transactionsError, refresh: refreshTransactions } = useTransactions(10)
+  const { balances, loading: balancesLoading, error: balancesError, refresh: refreshBalances } = useBalances()
+
+  const handleTransactionCreated = () => {
+    refreshStats()
+    refreshTransactions()
+    refreshBalances()
+  }
+
+  const hasError = statsError || transactionsError || balancesError
 
   return (
     <div className="space-y-6">
@@ -66,8 +81,32 @@ export function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Formance Ledger Visualizer</h1>
         <p className="mt-2 text-lg text-gray-600">
-          Explore the power of Formance Ledger across different use cases and industries
+          Connected to BaaS Ledger - Explore the power of Formance Ledger across different use cases and industries
         </p>
+      </div>
+
+      {/* Error Alert */}
+      {hasError && (
+        <ErrorAlert 
+          error={statsError || transactionsError || balancesError} 
+          onDismiss={() => {
+            if (statsError) refreshStats()
+            if (transactionsError) refreshTransactions()
+            if (balancesError) refreshBalances()
+          }}
+        />
+      )}
+
+      {/* Interactive Transaction Creation */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Try It Out</h2>
+        <p className="text-gray-600 mb-4">
+          Create a transaction to see how Formance Ledger works in real-time
+        </p>
+        <TransactionForm 
+          useCase="banking" 
+          onTransactionCreated={handleTransactionCreated}
+        />
       </div>
 
       {/* Stats Overview */}
@@ -127,6 +166,21 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Behind the Scenes Intelligence */}
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+          <Brain className="h-6 w-6 mr-3 text-purple-600" />
+          Behind the Scenes Intelligence
+        </h2>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <InsightsPanel />
+          <TransactionFlow transactionId="tx_demo_001" />
+        </div>
+      </div>
+
+      {/* Financial Intelligence */}
+      <FinancialIntelligence />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Recent Transactions */}
         <TransactionList
@@ -162,41 +216,44 @@ export function Dashboard() {
           <h2 className="text-2xl font-bold text-gray-900 mb-4">
             Why Choose Formance Ledger?
           </h2>
+          <p className="text-lg text-gray-600 mb-8">
+            Beyond basic transaction processing - unlock powerful insights and intelligence
+          </p>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mt-8">
+            <div className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
+                <Brain className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">AI-Powered Insights</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Real-time pattern detection, anomaly detection, and predictive analytics
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
+                <Zap className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">Atomic Transactions</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Guaranteed data integrity with all-or-nothing transaction processing
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
+                <Eye className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">Real-time Intelligence</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Instant financial health monitoring and intelligent recommendations
+              </p>
+            </div>
             <div className="text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
                 <BarChart3 className="h-6 w-6" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">Real-time Analytics</h3>
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">Advanced Analytics</h3>
               <p className="mt-2 text-sm text-gray-600">
-                Get instant insights into your financial data with real-time reporting
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
-                <TrendingUp className="h-6 w-6" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">Scalable Architecture</h3>
-              <p className="mt-2 text-sm text-gray-600">
-                Built to handle high-volume transactions and complex financial operations
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
-                <CreditCard className="h-6 w-6" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">Multi-Asset Support</h3>
-              <p className="mt-2 text-sm text-gray-600">
-                Handle multiple currencies, tokens, and digital assets in a single ledger
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-white">
-                <Activity className="h-6 w-6" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">Programmable Logic</h3>
-              <p className="mt-2 text-sm text-gray-600">
-                Use Numscript to create complex financial workflows and business logic
+                Comprehensive reporting, KPI tracking, and custom dashboards
               </p>
             </div>
           </div>

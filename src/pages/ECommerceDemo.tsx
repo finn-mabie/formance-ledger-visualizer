@@ -1,17 +1,17 @@
-import { useState } from 'react'
-import { useTransactionsByType } from '@/hooks/useLedger'
+import { useTransactionsByType, useStats, useBalances } from '@/hooks/useLedger'
 import { TransactionList } from '@/components/TransactionList'
 import { StatsCard } from '@/components/StatsCard'
+import { DualPanelLayout } from '@/components/DualPanelLayout'
+import { TransactionForm } from '@/components/TransactionForm'
+import { QuickActions } from '@/components/QuickActions'
 import { 
   ShoppingCart, 
   CreditCard, 
   Package, 
   TrendingUp,
   Users,
-  DollarSign,
-  ArrowLeft
+  DollarSign
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const revenueData = [
@@ -31,30 +31,41 @@ const paymentMethodData = [
 ]
 
 export function ECommerceDemo() {
-  const { transactions: paymentTransactions } = useTransactionsByType('payment')
-  const { transactions: purchaseTransactions } = useTransactionsByType('purchase')
+  const { transactions: paymentTransactions, refresh: refreshPayments } = useTransactionsByType('payment')
+  const { transactions: purchaseTransactions, refresh: refreshPurchases } = useTransactionsByType('purchase')
+  const { stats, refresh: refreshStats } = useStats()
+  const { balances, refresh: refreshBalances } = useBalances()
   
   const totalRevenue = paymentTransactions.reduce((sum, tx) => 
     sum + tx.postings.reduce((txSum, p) => txSum + p.amount, 0), 0)
   const totalOrders = purchaseTransactions.length
   const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
+  const handleTransactionCreated = () => {
+    refreshPayments()
+    refreshPurchases()
+    refreshStats()
+    refreshBalances()
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Link to="/" className="text-gray-400 hover:text-gray-600">
-          <ArrowLeft className="h-6 w-6" />
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <ShoppingCart className="h-8 w-8 mr-3 text-blue-600" />
-            E-Commerce Demo
-          </h1>
-          <p className="mt-2 text-lg text-gray-600">
-            Payment processing, order management, and revenue tracking with Formance Ledger
-          </p>
-        </div>
+    <DualPanelLayout
+      useCase="ecommerce"
+      title="E-Commerce Demo"
+      description="Payment processing, order management, and revenue tracking with Formance Ledger"
+      transactionId="tx_ecommerce_demo"
+    >
+
+      {/* Interactive Transaction Creation */}
+      <div className="space-y-6">
+        <QuickActions 
+          useCase="ecommerce" 
+          onTransactionCreated={handleTransactionCreated}
+        />
+        <TransactionForm 
+          useCase="ecommerce" 
+          onTransactionCreated={handleTransactionCreated}
+        />
       </div>
 
       {/* Key Metrics */}
@@ -82,7 +93,7 @@ export function ECommerceDemo() {
         />
         <StatsCard
           title="Active Customers"
-          value="1,247"
+          value={stats?.activeAccounts || 0}
           change="+15.3% from last month"
           changeType="positive"
           icon={<Users className="h-6 w-6" />}
@@ -203,6 +214,6 @@ export function ECommerceDemo() {
           </div>
         </div>
       </div>
-    </div>
+    </DualPanelLayout>
   )
 }
