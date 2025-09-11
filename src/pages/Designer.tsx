@@ -3,11 +3,11 @@ import { Plus, ArrowRightLeft, Download, Trash2, Play, Save, Send, RefreshCcw, S
 import { NormalizedGraph, AccountNode, TxnEdge, mergeMapping } from '@/services/diagramAdapter'
 import { EditableDiagramCanvas } from '@/components/EditableDiagramCanvas'
 import { LiveAPIMonitor } from '@/components/LiveAPIMonitor'
-import { createTransaction, listAccountBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
+import { createTransaction, listAccounts, listAccountsWithBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
 
 export function Designer() {
   const [ledger, setLedger] = useState('cursor-test')
-  const [accountBalances, setAccountBalances] = useState<Array<{ account: string; balances: Record<string, number> }>>([])
+  const [accountBalances, setAccountBalances] = useState<Array<{ account: string; balances: Record<string, number>; metadata?: Record<string, any> }>>([])
   const [balancesLoading, setBalancesLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [txnSuccess, setTxnSuccess] = useState<string | null>(null)
@@ -47,7 +47,7 @@ export function Designer() {
   account $destination
 }
 
-send [USD/2 100] (
+send [USD 100] (
   source = @world
   destination = $destination
 )`,
@@ -61,30 +61,16 @@ send [USD/2 100] (
   account $dest2
 }
 
-send [USD/2 100] (
+send [USD 100] (
   source = @world
   destination = $dest1
 )
 
-send [USD/2 50] (
+send [USD 50] (
   source = @world
   destination = $dest2
 )`,
       vars: JSON.stringify({ dest1: 'user:alice', dest2: 'user:bob' }, null, 2)
-    },
-    {
-      key: 'complex-sources',
-      name: 'Complex sources (from world)',
-      // Adapted to use @world as the sole source for backend safety
-      script: `vars {
-  account $destination
-}
-
-send [USD/2 100] (
-  source = @world
-  destination = $destination
-)`,
-      vars: JSON.stringify({ destination: 'user:bob' }, null, 2)
     }
   ]
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
@@ -97,11 +83,29 @@ send [USD/2 100] (
   const loadBalances = async () => {
     try {
       setBalancesLoading(true)
-      const ab = await listAccountBalances(ledger)
-      setAccountBalances(ab?.data || [])
-      setStatus(`Ledger: ${ledger} • ${ab?.data?.length || 0} accounts`)
-    } catch {
+      // Get accounts list with expanded volumes (which includes balances)
+      const accountsResponse = await listAccountsWithBalances(ledger)
+      const accounts = accountsResponse?.cursor?.data || []
+      
+      // Convert to the expected format
+      const accountsWithBalances = accounts.map((account: any) => ({
+        account: account.address,
+        balances: account.volumes ? Object.keys(account.volumes).reduce((acc, asset) => {
+          const volume = account.volumes[asset]
+          if (volume && volume.balance !== 0) {
+            acc[asset] = volume.balance
+          }
+          return acc
+        }, {} as Record<string, number>) : {},
+        metadata: account.metadata || {}
+      }))
+      
+      setAccountBalances(accountsWithBalances)
+      setStatus(`Ledger: ${ledger} • ${accountsWithBalances.length} accounts`)
+    } catch (error) {
+      console.error('Failed to load balances:', error)
       setStatus('Failed to fetch balances')
+      setAccountBalances([])
     } finally {
       setBalancesLoading(false)
     }
@@ -218,6 +222,8 @@ send [USD/2 100] (
       console.log('Transaction result:', result)
       setTxnSuccess(`Succeeded at ${new Date().toLocaleTimeString()}`)
       setStatus(`Successfully executed: ${t.id}`)
+      setAnimateTxnId(t.id)
+      setAnimateNonce(n => n + 1)
       await loadBalances()
     } catch (error: any) {
       console.error('Transaction error:', error)
@@ -234,6 +240,8 @@ send [USD/2 100] (
   const [selectedNodeEl, setSelectedNodeEl] = useState<string | null>(null)
   const [arrowMode, setArrowMode] = useState(false)
   const [arrowFrom, setArrowFrom] = useState<string | null>(null)
+  const [animateTxnId, setAnimateTxnId] = useState<string | null>(null)
+  const [animateNonce, setAnimateNonce] = useState(0)
   const selected = txns.find(t => t.id === selectedTxn)
   const selectedNode = accounts.find(a => a.elementId === selectedNodeEl)
 
@@ -307,6 +315,35 @@ send [USD/2 100] (
     setStatus(`Deleted transaction ${id}`)
   }
 
+  // Run selected transaction with Enter key
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && selectedTxn) {
+        e.preventDefault()
+        runTxn(selectedTxn)
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const active = document.activeElement as HTMLElement | null
+        const tag = active?.tagName?.toLowerCase()
+        const isTyping = tag === 'input' || tag === 'textarea' || active?.isContentEditable
+        if (isTyping) return
+        if (selectedNodeEl) {
+          e.preventDefault()
+          deleteAccount(selectedNodeEl)
+          return
+        }
+        if (selectedTxn) {
+          e.preventDefault()
+          deleteTransaction(selectedTxn)
+          return
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedTxn, selectedNodeEl, ledger, txns])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between bg-slate-950/70 backdrop-blur rounded-lg px-4 py-3 border border-slate-800 shadow-sm">
@@ -355,9 +392,22 @@ send [USD/2 100] (
             arrowFrom={arrowFrom}
             selectedTxnId={selectedTxn}
             selectedNodeElementId={selectedNodeEl}
+            balances={Object.fromEntries(accountBalances.map(r => [r.account, r.balances]))}
+            animateTxnId={animateTxnId}
+            animateNonce={animateNonce}
           />
           {(selectedNodeEl || selectedTxn) && (
             <div className="absolute bottom-3 left-3 z-10 bg-slate-950/70 border border-slate-800 rounded-md shadow p-2 flex gap-2">
+              {/* Run should be left-most when visible */}
+              {selectedTxn && (
+                <button 
+                  className="btn-primary inline-flex items-center gap-2 px-3 h-9"
+                  onClick={() => runTxn(selectedTxn)}
+                >
+                  <Play className="h-4 w-4" />
+                  <span>Run transaction</span>
+                </button>
+              )}
               {selectedNodeEl && (
                 <button 
                   className="btn-danger inline-flex items-center gap-2 px-3 h-9"
@@ -471,13 +521,13 @@ send [USD/2 100] (
                       const dest = (vars && (vars.destination || vars.dest || vars.to)) as string
                       if (typeof dest === 'string') {
                         ensureAccountVisible(dest)
-                        addLocalTransaction('world', dest, 100, 'USD/2')
+                        addLocalTransaction('world', dest, 100, 'USD')
                       }
                     } else if (selectedTemplate === 'multiple-send') {
                       const dest1 = (vars && (vars.dest1 || vars.destination1)) as string
                       const dest2 = (vars && (vars.dest2 || vars.destination2)) as string
-                      if (typeof dest1 === 'string') { ensureAccountVisible(dest1); addLocalTransaction('world', dest1, 100, 'USD/2') }
-                      if (typeof dest2 === 'string') { ensureAccountVisible(dest2); addLocalTransaction('world', dest2, 50, 'USD/2') }
+                      if (typeof dest1 === 'string') { ensureAccountVisible(dest1); addLocalTransaction('world', dest1, 100, 'USD') }
+                      if (typeof dest2 === 'string') { ensureAccountVisible(dest2); addLocalTransaction('world', dest2, 50, 'USD') }
                     } else {
                       Object.values(vars).forEach((v: any) => {
                         if (typeof v === 'string' && v.toLowerCase() !== 'world' && v !== '@world') {
@@ -738,8 +788,66 @@ function QueryExplorer({ ledger, onStatus }: { ledger: string; onStatus: (s: str
         </button>
       </div>
       {result && (
-        <div className="mt-2 bg-slate-900 text-emerald-300 p-3 rounded-md text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
-          <pre>{JSON.stringify(result, null, 2)}</pre>
+        <div className="mt-2 space-y-2">
+          {/* Accounts */}
+          {resource === 'accounts' && (
+            <div className="max-h-64 overflow-auto space-y-2">
+              {(result.cursor?.data || result.data || []).map((row: any, idx: number) => (
+                <div key={row.address || row.account || idx} className="p-2 border border-slate-700 rounded text-left hover:bg-slate-800">
+                  <div className="text-sm font-mono text-slate-100">{row.address || row.account}</div>
+                  <div className="text-xs text-slate-400">
+                    {row.volumes ? (
+                      Object.keys(row.volumes).length === 0 ? '—' : Object.entries(row.volumes).map(([asset, vol]: any) => `${asset}: ${vol.balance}`).join(' • ')
+                    ) : row.balances ? (
+                      Object.keys(row.balances).length === 0 ? '—' : Object.entries(row.balances).map(([asset, bal]: any) => `${asset}: ${bal}`).join(' • ')
+                    ) : (
+                      row.metadata ? Object.keys(row.metadata).length + ' metadata fields' : '—'
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Transactions */}
+          {resource === 'transactions' && (
+            <div className="max-h-64 overflow-auto space-y-2">
+              {(result.cursor?.data || result.data || []).map((tx: any) => (
+                <div key={tx.id} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                  <div className="text-sm text-slate-100 font-mono">{tx.id}</div>
+                  <div className="text-xs text-slate-400">
+                    {(tx.postings || []).map((p: any, i: number) => (
+                      <span key={i} className="mr-2">{p.source} → {p.destination} [{p.asset} {p.amount}]</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Volumes */}
+          {resource === 'volumes' && (
+            <div className="max-h-64 overflow-auto space-y-2">
+              {(result.cursor?.data || result.data || []).map((v: any, idx: number) => (
+                <div key={idx} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                  <div className="text-sm text-slate-100 font-mono">{v.account} • {v.asset}</div>
+                  <div className="text-xs text-slate-400">balance: {v.balance}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Aggregated Balances */}
+          {resource === 'balances' && (
+            <div className="max-h-64 overflow-auto space-y-2">
+              {(result.data || []).map((row: any, idx: number) => (
+                <div key={row.account || idx} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                  <div className="text-sm text-slate-100 font-mono">{row.account}</div>
+                  <div className="text-xs text-slate-400">
+                    {row.balances && Object.keys(row.balances).length > 0 ?
+                      Object.entries(row.balances).map(([asset, bal]: any) => `${asset}: ${bal}`).join(' • ') : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

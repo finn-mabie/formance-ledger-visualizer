@@ -20,6 +20,22 @@ export async function listAccounts(ledger: string) {
   }
 }
 
+export async function listAccountsWithBalances(ledger: string) {
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/accounts?expand=volumes`
+  const start = performance.now()
+  try {
+    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: null, statusCode: 0 })
+    const res = await fetch(endpoint)
+    const data = await res.json().catch(() => ({}))
+    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: null, response: data, statusCode: res.status, duration: performance.now() - start })
+    if (!res.ok) throw new Error('Failed to fetch accounts with balances')
+    return data
+  } catch (e) {
+    emitApiCall({ method: 'GET', endpoint, status: 'error', request: null, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
+    throw e
+  }
+}
+
 export async function listTransactions(ledger: string, params: Record<string, string> = {}) {
   const q = new URLSearchParams(params).toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/transactions${q ? `?${q}` : ''}`
@@ -88,10 +104,14 @@ export async function listAccountBalancesFiltered(ledger: string, params: Record
   }
 }
 
-// POST-filter variants
+// Filter variants using query parameter
 export async function searchTransactions(ledger: string, filter: any) {
-  const q = filter && Object.keys(filter || {}).length > 0 ? `?query=${encodeURIComponent(JSON.stringify(filter))}` : ''
-  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/transactions${q}`
+  const params = new URLSearchParams()
+  if (filter && Object.keys(filter || {}).length > 0) {
+    params.set('query', JSON.stringify(filter))
+  }
+  const q = params.toString()
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/transactions${q ? `?${q}` : ''}`
   const start = performance.now()
   try {
     emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
@@ -106,9 +126,16 @@ export async function searchTransactions(ledger: string, filter: any) {
   }
 }
 
-export async function searchAccounts(ledger: string, filter: any) {
-  const q = filter && Object.keys(filter || {}).length > 0 ? `?query=${encodeURIComponent(JSON.stringify(filter))}` : ''
-  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/accounts${q}`
+export async function searchAccounts(ledger: string, filter: any, expandVolumes: boolean = true) {
+  const params = new URLSearchParams()
+  if (filter && Object.keys(filter || {}).length > 0) {
+    params.set('query', JSON.stringify(filter))
+  }
+  if (expandVolumes) {
+    params.set('expand', 'volumes')
+  }
+  const q = params.toString()
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/accounts${q ? `?${q}` : ''}`
   const start = performance.now()
   try {
     emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
@@ -124,8 +151,12 @@ export async function searchAccounts(ledger: string, filter: any) {
 }
 
 export async function searchVolumes(ledger: string, filter: any) {
-  const q = filter && Object.keys(filter || {}).length > 0 ? `?query=${encodeURIComponent(JSON.stringify(filter))}` : ''
-  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/volumes${q}`
+  const params = new URLSearchParams()
+  if (filter && Object.keys(filter || {}).length > 0) {
+    params.set('query', JSON.stringify(filter))
+  }
+  const q = params.toString()
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/volumes${q ? `?${q}` : ''}`
   const start = performance.now()
   try {
     emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
@@ -141,8 +172,12 @@ export async function searchVolumes(ledger: string, filter: any) {
 }
 
 export async function searchBalances(ledger: string, filter: any) {
-  const q = filter && Object.keys(filter || {}).length > 0 ? `?query=${encodeURIComponent(JSON.stringify(filter))}` : ''
-  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/account-balances${q}`
+  const params = new URLSearchParams()
+  if (filter && Object.keys(filter || {}).length > 0) {
+    params.set('query', JSON.stringify(filter))
+  }
+  const q = params.toString()
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/account-balances${q ? `?${q}` : ''}`
   const start = performance.now()
   try {
     emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })

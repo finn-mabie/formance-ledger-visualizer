@@ -1,6 +1,6 @@
 import { NormalizedGraph, AccountNode, TxnEdge } from '@/services/diagramAdapter'
 import { MousePointerClick } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 
 interface Props {
   graph: NormalizedGraph
@@ -14,6 +14,9 @@ interface Props {
   arrowFrom?: string | null
   selectedTxnId?: string | null
   selectedNodeElementId?: string | null
+  balances?: Record<string, Record<string, number>>
+  animateTxnId?: string | null
+  animateNonce?: number
 }
 
 export function EditableDiagramCanvas({ 
@@ -27,7 +30,10 @@ export function EditableDiagramCanvas({
   arrowMode = false,
   arrowFrom = null,
   selectedTxnId = null,
-  selectedNodeElementId = null
+  selectedNodeElementId = null,
+  balances,
+  animateTxnId = null,
+  animateNonce
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -38,6 +44,8 @@ export function EditableDiagramCanvas({
   const [tempAccountId, setTempAccountId] = useState('')
   const [tempTxnAmount, setTempTxnAmount] = useState('')
   const [tempTxnAsset, setTempTxnAsset] = useState('')
+  const [anim, setAnim] = useState<{ x1: number; y1: number; x2: number; y2: number; start: number; duration: number } | null>(null)
+  const [animProgress, setAnimProgress] = useState(0)
   
   const width = Math.max(800, Math.max(...graph.accounts.map(a => (a.x||0)+(a.w||140))) + 100)
   const height = Math.max(600, Math.max(...graph.accounts.map(a => (a.y||0)+(a.h||60))) + 100)
@@ -56,6 +64,37 @@ export function EditableDiagramCanvas({
     const s = Math.min(sx, sy)
     return { x: fc.cx + dx * s, y: fc.cy + dy * s }
   }
+
+  // Trigger animation when requested by parent
+  useEffect(() => {
+    if (!animateTxnId) return
+    const t = graph.transactions.find(tx => tx.id === animateTxnId)
+    if (!t) return
+    const from = findAccount(t.fromId)
+    const to = findAccount(t.toId)
+    if (!from || !to) return
+    const a1 = anchorOnRect(from, to)
+    const a2 = anchorOnRect(to, from)
+    setAnim({ x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y, start: performance.now(), duration: 900 })
+    setAnimProgress(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animateTxnId, animateNonce])
+
+  useEffect(() => {
+    if (!anim) return
+    let raf = 0
+    const step = (ts: number) => {
+      const p = Math.min(1, (ts - anim.start) / anim.duration)
+      setAnimProgress(p)
+      if (p < 1) {
+        raf = requestAnimationFrame(step)
+      } else {
+        setAnim(null)
+      }
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [anim])
 
   const startEditingAccountLabel = (e: React.MouseEvent, account: AccountNode) => {
     e.stopPropagation()
@@ -126,13 +165,11 @@ export function EditableDiagramCanvas({
                 />
               )}
               <line x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke={isSelected ? '#10b981' : '#94a3b8'} strokeWidth={isSelected ? 2.5 : 2.5}
+                stroke={isSelected ? '#10b981' : '#94a3b8'} strokeWidth={2.5}
                 markerEnd={isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)'}
-                onDoubleClick={onRunTransaction ? () => onRunTransaction(id) : undefined}
               />
               <line x1={x1} y1={y1} x2={x2} y2={y2}
                 stroke="transparent" strokeWidth={12}
-                onDoubleClick={onRunTransaction ? () => onRunTransaction(id) : undefined}
               />
               {!isEditing ? (
                 <text 
@@ -186,6 +223,18 @@ export function EditableDiagramCanvas({
             <polygon points="0 0, 10 3.5, 0 7" fill="#10b981" />
           </marker>
         </defs>
+        {anim && (
+          (() => {
+            const cx = anim.x1 + (anim.x2 - anim.x1) * animProgress
+            const cy = anim.y1 + (anim.y2 - anim.y1) * animProgress
+            return (
+              <g>
+                <circle cx={cx} cy={cy} r={6} fill="#10b981" opacity={0.9} />
+                <circle cx={cx} cy={cy} r={12} fill="#10b981" opacity={0.15} />
+              </g>
+            )
+          })()
+        )}
       </svg>
       <div style={{ width, height }} />
       {graph.accounts.map(a => {
@@ -193,6 +242,16 @@ export function EditableDiagramCanvas({
         const isEditingId = editingAccountId === a.elementId
         const isEditing = isEditingLabel || isEditingId
         const isSelectedNode = selectedNodeElementId === a.elementId
+        const acctBalances = balances && a.id ? balances[a.id] : undefined
+        let primaryBalance: string = '—'
+        if (acctBalances && Object.keys(acctBalances).length > 0) {
+          // Prefer USD-like assets if present, otherwise take the first
+          const preferred = Object.entries(acctBalances).find(([asset]) => /USD/i.test(asset)) || Object.entries(acctBalances)[0]
+          if (preferred) {
+            const [asset, bal] = preferred
+            primaryBalance = `${asset}: ${bal}`
+          }
+        }
         const onMouseDown = (e: React.MouseEvent) => {
           if (!onNodeMove || isEditing) return
           e.preventDefault()
@@ -245,7 +304,7 @@ export function EditableDiagramCanvas({
           >
             {!isEditingId ? (
               <div 
-                className="p-2 text-xs font-mono text-slate-400 cursor-text" 
+                className="p-2 text-xs font-mono text-slate-300 cursor-text" 
                 onDoubleClick={(e) => startEditingAccountId(e, a)}
               >
                 {a.id || 'ledger-name'}
@@ -265,34 +324,15 @@ export function EditableDiagramCanvas({
                 />
               </div>
             )}
-            {!isEditingLabel ? (
-              <div 
-                className="px-2 pb-2 text-sm cursor-text text-slate-100" 
-                onDoubleClick={(e) => startEditingAccountLabel(e, a)}
-              >
-                {a.label || 'nickname'}
-              </div>
-            ) : (
-              <div className="px-2 pb-2">
-                <input
-                  className="w-full text-sm px-1 border border-slate-700 rounded bg-slate-800 text-slate-100"
-                  value={tempAccountLabel}
-                  onChange={(e) => setTempAccountLabel(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveAccountLabelEdit(a)
-                    if (e.key === 'Escape') setEditingAccount(null)
-                  }}
-                  onBlur={() => saveAccountLabelEdit(a)}
-                  autoFocus
-                />
-              </div>
-            )}
+            <div className="px-2 pb-2 text-[11px] text-slate-400">
+              {primaryBalance}
+            </div>
           </div>
         )
       })}
       {onRunTransaction && !arrowMode && (
         <div className="absolute right-2 top-2 text-xs text-slate-300 bg-slate-900/80 px-2 py-1 rounded shadow">
-          Double-click arrow to run transaction <MousePointerClick className="inline h-3 w-3"/>
+          Select arrow then press Enter to run
         </div>
       )}
       {arrowMode && (
