@@ -87,18 +87,38 @@ send [USD 50] (
       const accountsResponse = await listAccountsWithBalances(ledger)
       const accounts = accountsResponse?.cursor?.data || []
       
-      // Convert to the expected format
-      const accountsWithBalances = accounts.map((account: any) => ({
-        account: account.address,
-        balances: account.volumes ? Object.keys(account.volumes).reduce((acc, asset) => {
-          const volume = account.volumes[asset]
-          if (volume && volume.balance !== 0) {
-            acc[asset] = volume.balance
+      // Convert to displayable balances. Prefer explicit balance; fallback to input-output.
+      const accountsWithBalances = accounts.map((account: any) => {
+        const balances: Record<string, number> = {}
+        const source = account.volumes || account.balances || {}
+        Object.keys(source).forEach((asset) => {
+          const vol: any = (source as any)[asset]
+          let bal: number | null = null
+          if (vol && typeof vol.balance !== 'undefined') {
+            const raw = (vol as any).balance
+            const num = typeof raw === 'number' ? raw : Number(raw)
+            if (!Number.isNaN(num)) bal = num
+          } else {
+            const rawInput = typeof vol?.input !== 'undefined' ? (vol as any).input : 0
+            const rawOutput = typeof vol?.output !== 'undefined' ? (vol as any).output : 0
+            const input = typeof rawInput === 'number' ? rawInput : Number((rawInput as any)?.value ?? rawInput)
+            const output = typeof rawOutput === 'number' ? rawOutput : Number((rawOutput as any)?.value ?? rawOutput)
+            if (!Number.isNaN(input) || !Number.isNaN(output)) {
+              const i = Number.isNaN(input) ? 0 : input
+              const o = Number.isNaN(output) ? 0 : output
+              if (i !== 0 || o !== 0) bal = i - o
+            }
           }
-          return acc
-        }, {} as Record<string, number>) : {},
-        metadata: account.metadata || {}
-      }))
+          if (typeof bal === 'number' && !Number.isNaN(bal)) {
+            balances[asset] = bal
+          }
+        })
+        return {
+          account: account.address,
+          balances,
+          metadata: account.metadata || {}
+        }
+      })
       
       setAccountBalances(accountsWithBalances)
       setStatus(`Ledger: ${ledger} • ${accountsWithBalances.length} accounts`)
