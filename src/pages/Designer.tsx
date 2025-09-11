@@ -214,10 +214,8 @@ send [USD 50] (
       console.log('Transaction result:', result)
       setTxnSuccess(`Succeeded at ${new Date().toLocaleTimeString()}`)
       setStatus(`Successfully executed ${postings.length} posting(s)`)
-      if (selectedTxnIds.length === 1) {
-        setAnimateTxnId(selectedTxnIds[0])
-        setAnimateNonce(n => n + 1)
-      }
+      setAnimateTxnIds([...selectedTxnIds])
+      setAnimateNonce(n => n + 1)
       await loadBalances()
     } catch (error: any) {
       console.error('Transaction error:', error)
@@ -234,7 +232,10 @@ send [USD 50] (
   const [selectedNodeEl, setSelectedNodeEl] = useState<string | null>(null)
   const [arrowMode, setArrowMode] = useState(false)
   const [arrowFrom, setArrowFrom] = useState<string | null>(null)
+  // Deprecated single-arrow animation state (kept for compatibility, unused now)
   const [animateTxnId, setAnimateTxnId] = useState<string | null>(null)
+  // IDs of arrows to animate after a run
+  const [animateTxnIds, setAnimateTxnIds] = useState<string[]>([])
   const [animateNonce, setAnimateNonce] = useState(0)
   const selected = selectedTxnIds.length === 1 ? txns.find(t => t.id === selectedTxnIds[0]) : undefined
   const selectedNode = accounts.find(a => a.elementId === selectedNodeEl)
@@ -389,7 +390,7 @@ send [USD 50] (
             selectedTxnIds={selectedTxnIds}
             selectedNodeElementId={selectedNodeEl}
             balances={Object.fromEntries(accountBalances.map(r => [r.account, r.balances]))}
-            animateTxnId={animateTxnId}
+            animateTxnIds={animateTxnIds}
             animateNonce={animateNonce}
           />
           {(selectedNodeEl || selectedTxnIds.length > 0) && (

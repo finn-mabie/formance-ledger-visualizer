@@ -15,7 +15,7 @@ interface Props {
   selectedTxnIds?: string[]
   selectedNodeElementId?: string | null
   balances?: Record<string, Record<string, number>>
-  animateTxnId?: string | null
+  animateTxnIds?: string[]
   animateNonce?: number
 }
 
@@ -32,7 +32,7 @@ export function EditableDiagramCanvas({
   selectedTxnIds = [],
   selectedNodeElementId = null,
   balances,
-  animateTxnId = null,
+  animateTxnIds = [],
   animateNonce
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -44,7 +44,9 @@ export function EditableDiagramCanvas({
   const [tempAccountId, setTempAccountId] = useState('')
   const [tempTxnAmount, setTempTxnAmount] = useState('')
   const [tempTxnAsset, setTempTxnAsset] = useState('')
-  const [anim, setAnim] = useState<{ x1: number; y1: number; x2: number; y2: number; start: number; duration: number } | null>(null)
+  const [anims, setAnims] = useState<Array<{ x1: number; y1: number; x2: number; y2: number }>>([])
+  const [animStart, setAnimStart] = useState<number | null>(null)
+  const [animDuration] = useState<number>(900)
   const [animProgress, setAnimProgress] = useState(0)
   
   const width = Math.max(800, Math.max(...graph.accounts.map(a => (a.x||0)+(a.w||140))) + 100)
@@ -67,34 +69,42 @@ export function EditableDiagramCanvas({
 
   // Trigger animation when requested by parent
   useEffect(() => {
-    if (!animateTxnId) return
-    const t = graph.transactions.find(tx => tx.id === animateTxnId)
-    if (!t) return
-    const from = findAccount(t.fromId)
-    const to = findAccount(t.toId)
-    if (!from || !to) return
-    const a1 = anchorOnRect(from, to)
-    const a2 = anchorOnRect(to, from)
-    setAnim({ x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y, start: performance.now(), duration: 900 })
-    setAnimProgress(0)
+    if (!animateTxnIds || animateTxnIds.length === 0) return
+    const nextAnims: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+    for (const id of animateTxnIds) {
+      const t = graph.transactions.find(tx => tx.id === id)
+      if (!t) continue
+      const from = findAccount(t.fromId)
+      const to = findAccount(t.toId)
+      if (!from || !to) continue
+      const a1 = anchorOnRect(from, to)
+      const a2 = anchorOnRect(to, from)
+      nextAnims.push({ x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y })
+    }
+    if (nextAnims.length > 0) {
+      setAnims(nextAnims)
+      setAnimStart(performance.now())
+      setAnimProgress(0)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animateTxnId, animateNonce])
+  }, [JSON.stringify(animateTxnIds), animateNonce])
 
   useEffect(() => {
-    if (!anim) return
+    if (!animStart || anims.length === 0) return
     let raf = 0
     const step = (ts: number) => {
-      const p = Math.min(1, (ts - anim.start) / anim.duration)
+      const p = Math.min(1, (ts - animStart) / animDuration)
       setAnimProgress(p)
       if (p < 1) {
         raf = requestAnimationFrame(step)
       } else {
-        setAnim(null)
+        setAnims([])
+        setAnimStart(null)
       }
     }
     raf = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf)
-  }, [anim])
+  }, [animStart, anims, animDuration])
 
   const startEditingAccountLabel = (e: React.MouseEvent, account: AccountNode) => {
     e.stopPropagation()
@@ -239,17 +249,19 @@ export function EditableDiagramCanvas({
             <polygon points="0 0, 10 3.5, 0 7" fill="#10b981" />
           </marker>
         </defs>
-        {anim && (
-          (() => {
-            const cx = anim.x1 + (anim.x2 - anim.x1) * animProgress
-            const cy = anim.y1 + (anim.y2 - anim.y1) * animProgress
-            return (
-              <g>
-                <circle cx={cx} cy={cy} r={6} fill="#10b981" opacity={0.9} />
-                <circle cx={cx} cy={cy} r={12} fill="#10b981" opacity={0.15} />
-              </g>
-            )
-          })()
+        {animStart && anims.length > 0 && (
+          <g>
+            {anims.map((a, idx) => {
+              const cx = a.x1 + (a.x2 - a.x1) * animProgress
+              const cy = a.y1 + (a.y2 - a.y1) * animProgress
+              return (
+                <g key={idx}>
+                  <circle cx={cx} cy={cy} r={6} fill="#10b981" opacity={0.9} />
+                  <circle cx={cx} cy={cy} r={12} fill="#10b981" opacity={0.15} />
+                </g>
+              )
+            })}
+          </g>
         )}
       </svg>
       <div style={{ width, height }} />
