@@ -12,7 +12,7 @@ interface Props {
   onUpdateTransaction?: (id: string, updates: Partial<TxnEdge>) => void
   arrowMode?: boolean
   arrowFrom?: string | null
-  selectedTxnId?: string | null
+  selectedTxnIds?: string[]
   selectedNodeElementId?: string | null
   balances?: Record<string, Record<string, number>>
   animateTxnId?: string | null
@@ -29,7 +29,7 @@ export function EditableDiagramCanvas({
   onUpdateTransaction,
   arrowMode = false,
   arrowFrom = null,
-  selectedTxnId = null,
+  selectedTxnIds = [],
   selectedNodeElementId = null,
   balances,
   animateTxnId = null,
@@ -131,13 +131,24 @@ export function EditableDiagramCanvas({
 
   const saveTxnEdit = (txn: TxnEdge) => {
     if (onUpdateTransaction) {
-      const amount = parseFloat(tempTxnAmount) || 0
       onUpdateTransaction(txn.id, { 
-        metadata: { ...txn.metadata, amount, asset: tempTxnAsset || 'USD' }
+        metadata: { ...txn.metadata, amount: parseFloat(tempTxnAmount) || 0, asset: tempTxnAsset || 'USD' }
       })
     }
     setEditingTxn(null)
   }
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (selectedTxnIds && selectedTxnIds.length > 0) && onRunTransaction) {
+        e.preventDefault()
+        onRunTransaction()
+        return
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedTxnIds, onRunTransaction])
 
   return (
     <div ref={containerRef} className="relative border border-slate-800 rounded overflow-auto bg-slate-950" style={{ height: 600 }}>
@@ -154,10 +165,15 @@ export function EditableDiagramCanvas({
           const y2 = a2.y
           const id = t.id
           const isEditing = editingTxn === id
-          const isSelected = selectedTxnId === id
+          const isSelected = (selectedTxnIds || []).includes(id)
           
+          const onArrowClick = (e: React.MouseEvent) => {
+            e.stopPropagation()
+            if (!onSelectArrow) return
+            onSelectArrow(id)
+          }
           return (
-            <g key={id} className="group" onClick={onSelectArrow ? () => onSelectArrow(id) : undefined} style={{ cursor: onRunTransaction || onSelectArrow ? 'pointer' : 'default' }}>
+            <g key={id} className="group" onClick={onArrowClick} style={{ cursor: 'pointer' }}>
               {isSelected && (
                 <line x1={x1} y1={y1} x2={x2} y2={y2}
                   stroke="rgba(16,185,129,0.28)" strokeWidth={4}
@@ -307,7 +323,7 @@ export function EditableDiagramCanvas({
                 className="p-2 text-xs font-mono text-slate-300 cursor-text" 
                 onDoubleClick={(e) => startEditingAccountId(e, a)}
               >
-                {a.id || 'ledger-name'}
+                {a.id || '<placeholder>'}
               </div>
             ) : (
               <div className="p-2">
@@ -332,7 +348,7 @@ export function EditableDiagramCanvas({
       })}
       {onRunTransaction && !arrowMode && (
         <div className="absolute right-2 top-2 text-xs text-slate-300 bg-slate-900/80 px-2 py-1 rounded shadow">
-          Select arrow then press Enter to run
+          Select one or more arrows, then press Enter to run
         </div>
       )}
       {arrowMode && (

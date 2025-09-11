@@ -17,6 +17,12 @@ export interface TxnEdge {
   elementId: string
   fromId: string
   toId: string
+  postings?: Array<{
+    sourceId: string
+    destinationId: string
+    amount: number
+    asset: string
+  }>
   metadata?: Record<string, any>
 }
 

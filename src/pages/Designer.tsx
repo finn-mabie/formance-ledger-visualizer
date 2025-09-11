@@ -119,7 +119,7 @@ send [USD 50] (
   const addAccount = () => {
     const x = 100 + accounts.length * 40
     const y = 120 + accounts.length * 20
-    const id = 'ledger-name'
+    const id = '<placeholder>'
     const label = 'nickname'
     setAccounts([...accounts, { id, label, elementId: `el_${Date.now()}`, x, y, w: 160, h: 60 }])
   }
@@ -131,7 +131,7 @@ send [USD 50] (
     }
     setArrowMode(true)
     setArrowFrom(null)
-    setStatus('Click the source account for the transaction')
+    setStatus('Click the source account for the posting')
   }
 
   const handleNodeClick = (elementId: string) => {
@@ -146,6 +146,7 @@ send [USD 50] (
         const fromAccount = accounts.find(a => a.elementId === arrowFrom)
         if (!fromAccount) return
         
+        // Always create a new arrow (posting) as its own edge
         const id = `txn.manual_${nextIdx}`
         setNextIdx(nextIdx + 1)
         const newTxn = { 
@@ -154,10 +155,11 @@ send [USD 50] (
           elementId: `ar_${Date.now()}`, 
           fromId: fromAccount.id, 
           toId: account.id, 
-          metadata: { asset: 'USD', amount: 1 } 
+          metadata: { asset: 'USD', amount: 1 }
         }
         setTxns([...txns, newTxn])
-        setStatus(`Created arrow from ${fromAccount.id} to ${account.id}`)
+        setSelectedTxnIds([id])
+        setStatus(`Added posting: ${fromAccount.id} → ${account.id}`)
         setArrowMode(false)
         setArrowFrom(null)
       }
@@ -177,57 +179,49 @@ send [USD 50] (
     URL.revokeObjectURL(url)
   }
 
-  const runTxn = async (txnId: string) => {
-    const t = txns.find(x => x.id === txnId)
-    if (!t) return
-    
-    // Convert amount based on asset precision if provided (e.g., USD/2)
-    const amountFloat = Number(t.metadata?.amount || 1)
-    const asset = String(t.metadata?.asset || 'USD')
-    const precisionMatch = asset.match(/\/(\d+)/)
-    const precision = precisionMatch ? parseInt(precisionMatch[1], 10) : 0
-    const scale = Math.pow(10, isNaN(precision) ? 0 : precision)
-    const amount = Math.round(amountFloat * scale)
-    
+  const runSelectedTxns = async () => {
+    if (selectedTxnIds.length === 0) return
     try {
-      setStatus(`Executing transaction: ${t.id}...`)
-      
-      // Build the transaction payload according to Formance API spec
-      const transactionPayload = {
-        postings: [{ 
-          source: t.fromId, 
-          destination: t.toId, 
-          amount: amount, // Must be an integer
-          asset: asset 
-        }]
-      }
-      
-      // Always use a unique reference to avoid 409 CONFLICT on duplicate references
-      // Reference format: <label-or-txn>:<txn-id>:<nonce>
-      const nonce = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`
-      transactionPayload.reference = `${t.label || 'txn'}:${t.id}:${nonce}`
-      
-      // Filter out amount and asset from metadata since they're in postings
-      const { amount: _, asset: __, ...cleanMetadata } = t.metadata || {}
-      if (Object.keys(cleanMetadata).length > 0 || t.label) {
-        transactionPayload.metadata = {
-          source: 'designer',
-          transactionId: t.id,
-          ...cleanMetadata
+      setStatus(`Executing ${selectedTxnIds.length} posting(s) as one transaction...`)
+      const postings = selectedTxnIds.map(id => txns.find(t => t.id === id)).filter(Boolean).map(t => {
+        const asset = String(t!.metadata?.asset || 'USD')
+        const precisionMatch = asset.match(/\/(\d+)/)
+        const precision = precisionMatch ? parseInt(precisionMatch[1], 10) : 0
+        const scale = Math.pow(10, isNaN(precision) ? 0 : precision)
+        const amountFloat = Number(t!.metadata?.amount || 1)
+        const amount = Math.round(amountFloat * scale)
+        return {
+          source: t!.fromId,
+          destination: t!.toId,
+          amount,
+          asset
         }
+      })
+      const uuidV4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0
+        const v = c === 'x' ? r : (r & 0x3 | 0x8)
+        return v.toString(16)
+      })
+      const payload: any = {
+        // RFC3339 / ISO-8601 timestamp
+        timestamp: new Date().toISOString(),
+        postings,
+        reference: uuidV4(),
+        // Keep metadata minimal and valid
+        metadata: postings.length === 1 ? { txid: selectedTxnIds[0] } : { txid: selectedTxnIds.join(',') }
       }
-      
-      console.log('Sending transaction:', JSON.stringify(transactionPayload, null, 2))
-      const result = await createTransaction(ledger, transactionPayload)
+      const result = await createTransaction(ledger, payload)
       console.log('Transaction result:', result)
       setTxnSuccess(`Succeeded at ${new Date().toLocaleTimeString()}`)
-      setStatus(`Successfully executed: ${t.id}`)
-      setAnimateTxnId(t.id)
-      setAnimateNonce(n => n + 1)
+      setStatus(`Successfully executed ${postings.length} posting(s)`)
+      if (selectedTxnIds.length === 1) {
+        setAnimateTxnId(selectedTxnIds[0])
+        setAnimateNonce(n => n + 1)
+      }
       await loadBalances()
     } catch (error: any) {
       console.error('Transaction error:', error)
-      setStatus(`Failed to execute transaction: ${error.message}`)
+      setStatus(`Failed to execute: ${error.message}`)
       setTxnSuccess(null)
     }
   }
@@ -236,13 +230,13 @@ send [USD 50] (
     setAccounts(prev => prev.map(a => a.elementId === accountElementId ? { ...a, x, y } : a))
   }
 
-  const [selectedTxn, setSelectedTxn] = useState<string | null>(null)
+  const [selectedTxnIds, setSelectedTxnIds] = useState<string[]>([])
   const [selectedNodeEl, setSelectedNodeEl] = useState<string | null>(null)
   const [arrowMode, setArrowMode] = useState(false)
   const [arrowFrom, setArrowFrom] = useState<string | null>(null)
   const [animateTxnId, setAnimateTxnId] = useState<string | null>(null)
   const [animateNonce, setAnimateNonce] = useState(0)
-  const selected = txns.find(t => t.id === selectedTxn)
+  const selected = selectedTxnIds.length === 1 ? txns.find(t => t.id === selectedTxnIds[0]) : undefined
   const selectedNode = accounts.find(a => a.elementId === selectedNodeEl)
 
   // Reorder ledger accounts list so the selected account (if any) appears first
@@ -311,18 +305,20 @@ send [USD 50] (
 
   const deleteTransaction = (id: string) => {
     setTxns(prev => prev.filter(t => t.id !== id))
-    if (selectedTxn === id) setSelectedTxn(null)
+    setSelectedTxnIds(prev => prev.filter(x => x !== id))
     setStatus(`Deleted transaction ${id}`)
   }
 
-  // Run selected transaction with Enter key
+  const deleteSelectedTransactions = () => {
+    if (selectedTxnIds.length === 0) return
+    setTxns(prev => prev.filter(t => !selectedTxnIds.includes(t.id)))
+    setSelectedTxnIds([])
+    setStatus(`Deleted ${selectedTxnIds.length} transaction(s)`)
+  }
+
+  // Keyboard shortcuts for delete when not typing
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && selectedTxn) {
-        e.preventDefault()
-        runTxn(selectedTxn)
-        return
-      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const active = document.activeElement as HTMLElement | null
         const tag = active?.tagName?.toLowerCase()
@@ -333,16 +329,16 @@ send [USD 50] (
           deleteAccount(selectedNodeEl)
           return
         }
-        if (selectedTxn) {
+        if (selectedTxnIds.length > 0) {
           e.preventDefault()
-          deleteTransaction(selectedTxn)
+          deleteSelectedTransactions()
           return
         }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedTxn, selectedNodeEl, ledger, txns])
+  }, [selectedTxnIds, selectedNodeEl])
 
   return (
     <div className="space-y-6">
@@ -364,7 +360,7 @@ send [USD 50] (
             disabled={accounts.length < 2}
           >
             <ArrowRightLeft className="h-4 w-4" />
-            <span>{arrowMode ? 'Creating transaction…' : 'Add transaction'}</span>
+            <span>{arrowMode ? 'Adding posting…' : 'Add posting'}</span>
           </button>
           {arrowMode && (
             <button className="btn-secondary inline-flex items-center gap-2 px-3 h-9" onClick={() => { setArrowMode(false); setArrowFrom(null); setStatus('') }}>
@@ -382,27 +378,27 @@ send [USD 50] (
         <div className="lg:col-span-2 card hover:shadow-md transition-shadow relative">
           <EditableDiagramCanvas 
             graph={graph} 
-            onRunTransaction={runTxn} 
-            onSelectArrow={(id) => setSelectedTxn(prev => (prev === id ? null : id))} 
+            onRunTransaction={() => runSelectedTxns()} 
+            onSelectArrow={(id) => setSelectedTxnIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])} 
             onNodeMove={updateNodePos} 
             onSelectNode={handleNodeClick}
             onUpdateAccount={updateAccount}
             onUpdateTransaction={updateTransaction}
             arrowMode={arrowMode}
             arrowFrom={arrowFrom}
-            selectedTxnId={selectedTxn}
+            selectedTxnIds={selectedTxnIds}
             selectedNodeElementId={selectedNodeEl}
             balances={Object.fromEntries(accountBalances.map(r => [r.account, r.balances]))}
             animateTxnId={animateTxnId}
             animateNonce={animateNonce}
           />
-          {(selectedNodeEl || selectedTxn) && (
+          {(selectedNodeEl || selectedTxnIds.length > 0) && (
             <div className="absolute bottom-3 left-3 z-10 bg-slate-950/70 border border-slate-800 rounded-md shadow p-2 flex gap-2">
               {/* Run should be left-most when visible */}
-              {selectedTxn && (
+              {selectedTxnIds.length > 0 && (
                 <button 
                   className="btn-primary inline-flex items-center gap-2 px-3 h-9"
-                  onClick={() => runTxn(selectedTxn)}
+                  onClick={() => runSelectedTxns()}
                 >
                   <Play className="h-4 w-4" />
                   <span>Run transaction</span>
@@ -417,10 +413,10 @@ send [USD 50] (
                   <span>Delete account</span>
                 </button>
               )}
-              {selectedTxn && (
+              {selectedTxnIds.length > 0 && (
                 <button 
                   className="btn-danger inline-flex items-center gap-2 px-3 h-9"
-                  onClick={() => deleteTransaction(selectedTxn)}
+                  onClick={() => deleteSelectedTransactions()}
                 >
                   <Trash2 className="h-4 w-4" />
                   <span>Delete transaction</span>
