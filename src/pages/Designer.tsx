@@ -3,7 +3,7 @@ import { Plus, ArrowRightLeft, Download, Trash2, Play, Save, Send, RefreshCcw, S
 import { NormalizedGraph, AccountNode, TxnEdge, mergeMapping } from '@/services/diagramAdapter'
 import { EditableDiagramCanvas } from '@/components/EditableDiagramCanvas'
 import { LiveAPIMonitor } from '@/components/LiveAPIMonitor'
-import { createTransaction, listAccounts, listAccountsWithBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
+import { createTransaction, listAccounts, listAccountsWithBalances, listAllAccountsWithBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
 
 export function Designer() {
   const [ledger, setLedger] = useState('cursor-test')
@@ -83,9 +83,8 @@ send [USD 50] (
   const loadBalances = async () => {
     try {
       setBalancesLoading(true)
-      // Get accounts list with expanded volumes (which includes balances)
-      const accountsResponse = await listAccountsWithBalances(ledger)
-      const accounts = accountsResponse?.cursor?.data || []
+      // Get all accounts with expanded volumes across pages
+      const accounts = await listAllAccountsWithBalances(ledger)
       
       // Convert to displayable balances. Prefer explicit balance; fallback to input-output.
       const accountsWithBalances = accounts.map((account: any) => {

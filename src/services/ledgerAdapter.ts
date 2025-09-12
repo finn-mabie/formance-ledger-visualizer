@@ -36,6 +36,34 @@ export async function listAccountsWithBalances(ledger: string) {
   }
 }
 
+export async function listAllAccountsWithBalances(ledger: string) {
+  const results: any[] = []
+  let next: string | null = null
+  let page = 0
+  do {
+    const base = `/api/ledger/${encodeURIComponent(ledger)}/accounts`
+    const endpoint = next ? `${base}?cursor=${encodeURIComponent(next)}` : `${base}?expand=volumes`
+    const start = performance.now()
+    try {
+      emitApiCall({ method: 'GET', endpoint, status: 'pending', request: null, statusCode: 0 })
+      const res = await fetch(endpoint)
+      const data = await res.json().catch(() => ({}))
+      emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: null, response: data, statusCode: res.status, duration: performance.now() - start })
+      if (!res.ok) throw new Error('Failed to fetch accounts with balances')
+      const pageData = (data?.cursor?.data || data?.data || []) as any[]
+      results.push(...pageData)
+      next = data?.cursor?.next || null
+      page += 1
+      // Safety to avoid infinite loops
+      if (page > 50) break
+    } catch (e) {
+      emitApiCall({ method: 'GET', endpoint, status: 'error', request: null, response: { error: String(e) }, statusCode: 0, duration: performance.now() - (typeof start !== 'undefined' ? start : performance.now()) })
+      throw e
+    }
+  } while (next)
+  return results
+}
+
 export async function listTransactions(ledger: string, params: Record<string, string> = {}) {
   const q = new URLSearchParams(params).toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/transactions${q ? `?${q}` : ''}`
