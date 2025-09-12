@@ -3,22 +3,27 @@ import { AccountNode, TxnEdge } from '@/services/diagramAdapter'
 
 const initialAccounts: AccountNode[] = [
   { id: 'world', label: 'world', elementId: 'el_world', x: 40, y: 40, w: 160, h: 60 },
-  { id: 'user:buyer', label: 'user:buyer', elementId: 'el_buyer', x: 120, y: 220, w: 160, h: 60 },
-  { id: 'user:seller', label: 'user:seller', elementId: 'el_seller', x: 540, y: 220, w: 160, h: 60 },
-  { id: 'platform:escrow', label: 'platform:escrow', elementId: 'el_escrow', x: 330, y: 120, w: 180, h: 60 },
-  { id: 'platform:fees', label: 'platform:fees', elementId: 'el_fees', x: 330, y: 320, w: 160, h: 60 },
-  { id: 'bank:main', label: 'bank:main', elementId: 'el_bank', x: 330, y: 440, w: 160, h: 60 },
+  { id: 'order:123:pending', label: 'order:123:pending', elementId: 'el_order_pending', x: 260, y: 40, w: 200, h: 60 },
+  { id: 'order:123:cleared', label: 'order:123:cleared', elementId: 'el_order_cleared', x: 520, y: 40, w: 200, h: 60 },
+  { id: 'order:123:vendor:01', label: 'order:123:vendor:01', elementId: 'el_order_vendor1', x: 260, y: 200, w: 220, h: 60 },
+  { id: 'order:123:vendor:02', label: 'order:123:vendor:02', elementId: 'el_order_vendor2', x: 520, y: 200, w: 220, h: 60 },
+  { id: 'vendor:01:wallet:main', label: 'vendor:01:wallet:main', elementId: 'el_vendor1_wallet', x: 260, y: 360, w: 220, h: 60 },
+  { id: 'vendor:02:wallet:main', label: 'vendor:02:wallet:main', elementId: 'el_vendor2_wallet', x: 520, y: 360, w: 220, h: 60 },
 ]
 
 const initialTransactions: TxnEdge[] = [
-  // Buyer funds escrow
-  { id: 'txn.mkt_1', label: 'Buyer funds escrow', elementId: 'ar_1', fromId: 'user:buyer', toId: 'platform:escrow', metadata: { asset: 'USD', amount: 100 } },
-  // Platform takes fee
-  { id: 'txn.mkt_2', label: 'Platform fee', elementId: 'ar_2', fromId: 'platform:escrow', toId: 'platform:fees', metadata: { asset: 'USD', amount: 10 } },
-  // Release to seller
-  { id: 'txn.mkt_3', label: 'Payout seller', elementId: 'ar_3', fromId: 'platform:escrow', toId: 'user:seller', metadata: { asset: 'USD', amount: 90 } },
-  // Platform settles to bank (optional)
-  { id: 'txn.mkt_4', label: 'Settle fees to bank', elementId: 'ar_4', fromId: 'platform:fees', toId: 'bank:main', metadata: { asset: 'USD', amount: 10 } },
+  // 1) world -> order:123:pending
+  { id: 'txn.mkt_1', label: 'Fund order pending', elementId: 'ar_1', fromId: 'world', toId: 'order:123:pending', metadata: { asset: 'USD', amount: 100 } },
+  // 2) order:123:pending -> order:123:cleared
+  { id: 'txn.mkt_2', label: 'Order cleared', elementId: 'ar_2', fromId: 'order:123:pending', toId: 'order:123:cleared', metadata: { asset: 'USD', amount: 100 } },
+  // 3) order:123:cleared -> order:123:vendor:01
+  { id: 'txn.mkt_3', label: 'Allocate to vendor 01', elementId: 'ar_3', fromId: 'order:123:cleared', toId: 'order:123:vendor:01', metadata: { asset: 'USD', amount: 60 } },
+  // 4) order:123:cleared -> order:123:vendor:02
+  { id: 'txn.mkt_4', label: 'Allocate to vendor 02', elementId: 'ar_4', fromId: 'order:123:cleared', toId: 'order:123:vendor:02', metadata: { asset: 'USD', amount: 40 } },
+  // 5) order:123:vendor:01 -> vendor:01:wallet:main
+  { id: 'txn.mkt_5', label: 'Payout vendor 01', elementId: 'ar_5', fromId: 'order:123:vendor:01', toId: 'vendor:01:wallet:main', metadata: { asset: 'USD', amount: 60 } },
+  // 6) order:123:vendor:02 -> vendor:02:wallet:main
+  { id: 'txn.mkt_6', label: 'Payout vendor 02', elementId: 'ar_6', fromId: 'order:123:vendor:02', toId: 'vendor:02:wallet:main', metadata: { asset: 'USD', amount: 40 } },
 ]
 
 export function Marketplace() {
