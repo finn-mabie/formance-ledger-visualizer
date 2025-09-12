@@ -5,7 +5,7 @@ import { EditableDiagramCanvas } from '@/components/EditableDiagramCanvas'
 import { LiveAPIMonitor } from '@/components/LiveAPIMonitor'
 import { createTransaction, listAccounts, listAccountsWithBalances, listAllAccountsWithBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
 
-export function Designer() {
+export function Designer({ title = 'Diagram Designer', initialAccounts = [], initialTransactions = [] as TxnEdge[] }: { title?: string; initialAccounts?: AccountNode[]; initialTransactions?: TxnEdge[] }) {
   const [ledger, setLedger] = useState('cursor-test')
   const [accountBalances, setAccountBalances] = useState<Array<{ account: string; balances: Record<string, number>; metadata?: Record<string, any> }>>([])
   const [balancesLoading, setBalancesLoading] = useState(false)
@@ -74,8 +74,8 @@ send [USD 50] (
     }
   ]
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
-  const [accounts, setAccounts] = useState<AccountNode[]>([])
-  const [txns, setTxns] = useState<TxnEdge[]>([])
+  const [accounts, setAccounts] = useState<AccountNode[]>(initialAccounts)
+  const [txns, setTxns] = useState<TxnEdge[]>(initialTransactions)
   const [nextIdx, setNextIdx] = useState(1)
 
   const graph: NormalizedGraph = useMemo(() => ({ accounts, transactions: txns }), [accounts, txns])
@@ -364,7 +364,7 @@ send [USD 50] (
     <div className="space-y-6">
       <div className="flex items-center justify-between bg-slate-950/70 backdrop-blur rounded-lg px-4 py-3 border border-slate-800 shadow-sm">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">Diagram Designer</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">{title}</h1>
           <span className="text-xs px-2 py-1 rounded border border-emerald-600 text-emerald-300 bg-emerald-900/20">
             {status ? status : `Ledger: ${ledger}`}
           </span>
