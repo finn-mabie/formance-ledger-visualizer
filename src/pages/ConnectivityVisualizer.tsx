@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Settings, Plus, RefreshCcw, Send, Shield, Copy, Repeat, X, ChevronRight, Link2, CreditCard, Network } from 'lucide-react'
+import { Settings, Plus, RefreshCcw, Send, Copy, Repeat, X, ChevronRight, Link2, CreditCard } from 'lucide-react'
 import { searchAccounts, searchTransactions } from '@/services/ledgerAdapter'
 
-type Psp = 'stripe' | 'adyen'
+type Psp = 'payments'
 
 type ExternalPspAccount = {
   id: string
@@ -16,12 +16,10 @@ type ExternalPspAccount = {
 }
 
 type MockPaymentInput = {
-  psp: Psp
   pspAccountId: string
   amountMinor: number
   currency: string
   description?: string
-  customerId?: string
 }
 
 type NormalizedEvent = {
@@ -32,7 +30,7 @@ type NormalizedEvent = {
   merchantRef?: string
   customerRef?: string
   occurredAt: string
-  sourceType: 'stripe_charge' | 'adyen_payment'
+  sourceType: 'formance_payment'
   environment?: string
 }
 
@@ -42,21 +40,9 @@ type MockPayment = {
   status: 'succeeded' | 'failed' | 'refunded' | 'pending'
   rawPspEvent: any
   normalizedEvent: NormalizedEvent
-  webhookRequest: { url: string; headers: Record<string, string>; body: any }
-  webhookResponse?: { status: number; text: string } | { error: string }
 }
 
-async function hmacSha256Hex(secret: string, rawBody: string): Promise<string> {
-  try {
-    const enc = new TextEncoder()
-    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(rawBody))
-    const bytes = new Uint8Array(sig)
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-  } catch {
-    return ''
-  }
-}
+// no-op placeholder for removed webhook logic
 
 function formatMajor(amountMinor: number, currency: string) {
   const factor = 100
@@ -70,48 +56,101 @@ export function ConnectivityVisualizer() {
   const [payments, setPayments] = useState<MockPayment[]>([])
   const [tab, setTab] = useState<'overview' | 'accounts' | 'payments' | 'graph'>('overview')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [webhookUrl, setWebhookUrl] = useState<string>('https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/v3/connectors/webhooks/eyJQcm92aWRlciI6ImFkeWVuIiwiUmVmZXJlbmNlIjoiZTFiMDI1MjYtOTM4Ny00ZmYzLThkODItNGQxZmY2ZjAyNzNlIn0/')
-  const [webhookSecret, setWebhookSecret] = useState<string>('')
   const [environment, setEnvironment] = useState<string>('sandbox')
-  const [webhookUser, setWebhookUser] = useState<string>('test')
-  const [webhookPass, setWebhookPass] = useState<string>('test')
   const [creating, setCreating] = useState<{ account?: boolean; payment?: boolean; seeding?: boolean }>({})
-  const [formAccount, setFormAccount] = useState<{ psp: Psp; merchantName: string; currency: string; linkedLedgerAccountId: string }>({ psp: 'stripe', merchantName: '', currency: 'USD', linkedLedgerAccountId: '' })
-  const [formPayment, setFormPayment] = useState<{ psp: Psp; pspAccountId: string; amountMajor: string; currency: string; description: string; customerId: string }>({ psp: 'stripe', pspAccountId: '', amountMajor: '10.00', currency: 'USD', description: '', customerId: '' })
+  const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0)
+  const [formAccount, setFormAccount] = useState<{ merchantName: string; currency: string; linkedLedgerAccountId: string }>({ merchantName: '', currency: 'USD', linkedLedgerAccountId: '' })
+  const [formPayment, setFormPayment] = useState<{ pspAccountId: string; amountMajor: string; currency: string; description: string }>({ pspAccountId: '', amountMajor: '10.00', currency: 'USD', description: '' })
   const [selectedAccount, setSelectedAccount] = useState<ExternalPspAccount | null>(null)
   const [selectedPayment, setSelectedPayment] = useState<MockPayment | null>(null)
 
-  const visibleAccounts = useMemo(() => accounts.filter(a => pspFilter === 'all' ? true : a.psp === pspFilter), [accounts, pspFilter])
-  const visiblePayments = useMemo(() => payments.filter(p => pspFilter === 'all' ? true : p.normalizedEvent.sourceType.startsWith(pspFilter)), [payments, pspFilter])
+  const visibleAccounts = useMemo(() => accounts, [accounts])
+  const visiblePayments = useMemo(() => payments, [payments])
 
   const kpis = useMemo(() => {
-    const byPsp: Record<string, { count: number; succeeded: number; refunded: number; amountMinor: number }> = {}
+    const totals = { count: 0, succeeded: 0, refunded: 0, amountMinor: 0 }
     for (const p of visiblePayments) {
-      const key = p.normalizedEvent.sourceType.startsWith('stripe') ? 'stripe' : 'adyen'
-      byPsp[key] = byPsp[key] || { count: 0, succeeded: 0, refunded: 0, amountMinor: 0 }
-      byPsp[key].count += 1
-      if (p.status === 'succeeded') byPsp[key].succeeded += 1
-      if (p.status === 'refunded') byPsp[key].refunded += 1
-      byPsp[key].amountMinor += p.normalizedEvent.amountMinor
+      totals.count += 1
+      if (p.status === 'succeeded') totals.succeeded += 1
+      if (p.status === 'refunded') totals.refunded += 1
+      totals.amountMinor += p.normalizedEvent.amountMinor
     }
-    return byPsp
+    return totals
   }, [visiblePayments])
 
-  const createPspAccount = () => {
+  const api = {
+    get: async (url: string) => (await fetch(url)).json(),
+    post: async (url: string, body: any) => (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json()
+  }
+
+  const loadPaymentsAccounts = async () => {
+    try {
+      const list = await api.get('/api/payments/v3/accounts')
+      const data = (list?.cursor?.data || []) as any[]
+      const mapped: ExternalPspAccount[] = data.map((acc: any) => ({
+        id: acc.id,
+        psp: 'payments',
+        merchantName: acc.name || acc.accountName || acc.reference || 'External account',
+        currency: (acc.defaultAsset || 'USD').toUpperCase(),
+        metadata: acc.metadata || {},
+        createdAt: acc.createdAt || new Date().toISOString()
+      }))
+      setAccounts(mapped)
+    } catch {}
+  }
+
+  const loadPayments = async () => {
+    try {
+      const list = await api.get('/api/payments/v3/payments')
+      const data = (list?.cursor?.data || []) as any[]
+      const mapped: MockPayment[] = data.map((p: any) => ({
+        paymentId: p.id || p.reference || Math.random().toString(36).slice(2,10),
+        createdAt: p.createdAt || new Date().toISOString(),
+        status: (p.status || 'succeeded').toLowerCase(),
+        rawPspEvent: p,
+        normalizedEvent: {
+          externalPaymentId: p.id || p.reference || 'payment',
+          pspAccountId: p.destinationAccountID || p.sourceAccountID || '',
+          amountMinor: p.amount || p.initialAmount || 0,
+          currency: (p.asset || 'USD').toUpperCase(),
+          occurredAt: p.createdAt || new Date().toISOString(),
+          sourceType: 'formance_payment',
+          environment
+        }
+      }))
+      setPayments(mapped)
+    } catch {}
+  }
+
+  useEffect(() => { loadPaymentsAccounts(); loadPayments() }, [])
+
+  const createPspAccount = async () => {
     setCreating(c => ({ ...c, account: true }))
-    const now = new Date().toISOString()
-    const id = `${formAccount.psp === 'stripe' ? 'acct_' : 'ady_'}` + Math.random().toString(36).slice(2, 8)
-    const acc: ExternalPspAccount = {
-      id,
-      psp: formAccount.psp,
-      merchantName: formAccount.merchantName || 'Demo Merchant',
-      currency: formAccount.currency || 'USD',
-      linkedLedgerAccountId: formAccount.linkedLedgerAccountId || undefined,
-      metadata: { env: environment },
-      createdAt: now,
+    try {
+      const now = new Date().toISOString()
+      const body: any = {
+        reference: 'acct_' + Math.random().toString(36).slice(2,8),
+        createdAt: now,
+        accountName: formAccount.merchantName || 'Demo Merchant',
+        type: 'EXTERNAL',
+        defaultAsset: (formAccount.currency || 'USD').toUpperCase(),
+        metadata: formAccount.linkedLedgerAccountId ? { linkedLedgerAccountId: formAccount.linkedLedgerAccountId } : {}
+      }
+      const acc = await api.post('/api/payments/v3/accounts', body)
+      const row = acc?.data || acc
+      const mapped: ExternalPspAccount = {
+        id: row.id,
+        psp: 'payments',
+        merchantName: row.name || row.accountName || row.reference || body.accountName,
+        currency: (row.defaultAsset || body.defaultAsset || 'USD').toUpperCase(),
+        linkedLedgerAccountId: formAccount.linkedLedgerAccountId || undefined,
+        metadata: row.metadata || {},
+        createdAt: row.createdAt || now
+      }
+      setAccounts(prev => [mapped, ...prev])
+    } catch {} finally {
+      setCreating(c => ({ ...c, account: false }))
     }
-    setAccounts(prev => [acc, ...prev])
-    setCreating(c => ({ ...c, account: false }))
   }
 
   function buildStripeEvent(input: MockPaymentInput) {
@@ -171,91 +210,80 @@ export function ConnectivityVisualizer() {
     return { raw, normalized }
   }
 
-  const postWebhook = async (url: string, body: any) => {
-    const raw = JSON.stringify(body)
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (webhookUser || webhookPass) {
-      try {
-        const token = btoa(`${webhookUser || ''}:${webhookPass || ''}`)
-        headers['Authorization'] = `Basic ${token}`
-      } catch {}
-    }
-    if (webhookSecret) {
-      const sig = await hmacSha256Hex(webhookSecret, raw)
-      if (sig) headers['X-PSP-Signature'] = `sha256=${sig}`
-    }
-    try {
-      const res = await fetch(url, { method: 'POST', headers, body: raw })
-      const text = await res.text().catch(() => '')
-      return { ok: res.ok, status: res.status, text }
-    } catch (e: any) {
-      return { ok: false, status: 0, text: e?.message || 'Network error' }
-    }
-  }
+  const refreshFromLedger = () => setLedgerRefreshNonce(n => n + 1)
 
   const createPayment = async () => {
     setCreating(c => ({ ...c, payment: true }))
-    const acc = accounts.find(a => a.id === formPayment.pspAccountId)
-    if (!acc) { setCreating(c => ({ ...c, payment: false })); return }
-    const amountMinor = Math.round(Number(formPayment.amountMajor || '0') * 100)
-    const input: MockPaymentInput = {
-      psp: formPayment.psp,
-      pspAccountId: acc.id,
-      amountMinor,
-      currency: formPayment.currency || acc.currency || 'USD',
-      description: formPayment.description,
-      customerId: formPayment.customerId
+    try {
+      const acc = accounts.find(a => a.id === formPayment.pspAccountId)
+      if (!acc) { setCreating(c => ({ ...c, payment: false })); return }
+      const amountMinor = Math.round(Number(formPayment.amountMajor || '0') * 100)
+      const now = new Date().toISOString()
+      const body: any = {
+        reference: 'pay_' + Math.random().toString(36).slice(2,10),
+        createdAt: now,
+        type: 'PAY-IN',
+        initialAmount: amountMinor,
+        amount: amountMinor,
+        asset: (formPayment.currency || acc.currency || 'USD').toUpperCase(),
+        destinationAccountID: acc.id,
+        metadata: formPayment.description ? { description: formPayment.description } : {}
+      }
+      const created = await api.post('/api/payments/v3/payments', body)
+      const row = created?.data || created
+      const payment: MockPayment = {
+        paymentId: row.id || body.reference,
+        createdAt: row.createdAt || now,
+        status: (row.status || 'succeeded').toLowerCase(),
+        rawPspEvent: row,
+        normalizedEvent: {
+          externalPaymentId: row.id || body.reference,
+          pspAccountId: acc.id,
+          amountMinor,
+          currency: body.asset,
+          occurredAt: row.createdAt || now,
+          sourceType: 'formance_payment',
+          environment
+        }
+      }
+      setPayments(prev => [payment, ...prev])
+      setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, lastActivity: now } : a))
+    } catch {} finally {
+      setCreating(c => ({ ...c, payment: false }))
     }
-    const built = input.psp === 'stripe' ? buildStripeEvent(input) : buildAdyenEvent(input)
-    const webhookBody = built.raw
-    const req = { url: webhookUrl, headers: { 'Content-Type': 'application/json' }, body: webhookBody }
-    const resp = await postWebhook(webhookUrl, webhookBody)
-    const payment: MockPayment = {
-      paymentId: 'pay_' + Math.random().toString(36).slice(2, 10),
-      createdAt: new Date().toISOString(),
-      status: 'succeeded',
-      rawPspEvent: webhookBody,
-      normalizedEvent: built.normalized,
-      webhookRequest: req,
-      webhookResponse: resp.ok ? { status: resp.status, text: resp.text.slice(0, 200) } : { error: resp.text }
-    }
-    setPayments(prev => [payment, ...prev])
-    setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, lastActivity: new Date().toISOString() } : a))
-    setCreating(c => ({ ...c, payment: false }))
   }
 
   const seedData = async () => {
     setCreating(c => ({ ...c, seeding: true }))
-    const mkAcc = (psp: Psp, idx: number): ExternalPspAccount => ({
-      id: (psp === 'stripe' ? 'acct_' : 'ady_') + Math.random().toString(36).slice(2, 8),
-      psp,
-      merchantName: `${psp.toUpperCase()} Merchant ${idx}`,
-      currency: 'USD',
-      metadata: { env: environment },
-      createdAt: new Date().toISOString()
-    })
-    const newAccounts = [mkAcc('stripe', 1), mkAcc('stripe', 2), mkAcc('adyen', 1), mkAcc('adyen', 2)]
-    setAccounts(prev => [...newAccounts, ...prev])
-    const created: MockPayment[] = []
-    for (let i = 0; i < 14; i++) {
-      const acc = newAccounts[Math.floor(Math.random() * newAccounts.length)]
-      const amountMinor = (5 + Math.floor(Math.random() * 200)) * 100
-      const input: MockPaymentInput = { psp: acc.psp, pspAccountId: acc.id, amountMinor, currency: 'USD' }
-      const built = acc.psp === 'stripe' ? buildStripeEvent(input) : buildAdyenEvent(input)
-      const req = { url: webhookUrl, headers: { 'Content-Type': 'application/json' }, body: built.raw }
-      const resp = await postWebhook(webhookUrl, built.raw)
-      created.push({
-        paymentId: 'pay_' + Math.random().toString(36).slice(2, 10),
-        createdAt: new Date().toISOString(),
-        status: Math.random() < 0.2 ? 'refunded' : 'succeeded',
-        rawPspEvent: built.raw,
-        normalizedEvent: built.normalized,
-        webhookRequest: req,
-        webhookResponse: resp.ok ? { status: resp.status, text: resp.text.slice(0, 200) } : { error: resp.text }
-      })
+    try {
+      const now = new Date().toISOString()
+      const acc1 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_1', createdAt: now, accountName: 'Merchant USD', type: 'EXTERNAL', defaultAsset: 'USD' })
+      const acc2 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_2', createdAt: now, accountName: 'Merchant EUR', type: 'EXTERNAL', defaultAsset: 'EUR' })
+      const a1 = acc1?.data || acc1
+      const a2 = acc2?.data || acc2
+      const mapped1: ExternalPspAccount = { id: a1.id, psp: 'payments', merchantName: 'Merchant USD', currency: 'USD', createdAt: a1.createdAt || now }
+      const mapped2: ExternalPspAccount = { id: a2.id, psp: 'payments', merchantName: 'Merchant EUR', currency: 'EUR', createdAt: a2.createdAt || now }
+      setAccounts(prev => [mapped1, mapped2, ...prev])
+      const accs = [mapped1, mapped2]
+      const createdList: MockPayment[] = []
+      const n = 8
+      for (let i = 0; i < n; i++) {
+        const acc = accs[i % accs.length]
+        const amountMinor = (5 + Math.floor(Math.random() * 200)) * 100
+        const row = await api.post('/api/payments/v3/payments', { reference: 'seed_'+i, createdAt: new Date().toISOString(), type: 'PAY-IN', initialAmount: amountMinor, amount: amountMinor, asset: acc.currency, destinationAccountID: acc.id })
+        const pr = row?.data || row
+        createdList.push({
+          paymentId: pr.id || 'seed_'+i,
+          createdAt: pr.createdAt || new Date().toISOString(),
+          status: (pr.status || 'succeeded').toLowerCase(),
+          rawPspEvent: pr,
+          normalizedEvent: { externalPaymentId: pr.id || 'seed_'+i, pspAccountId: acc.id, amountMinor, currency: acc.currency, occurredAt: pr.createdAt || new Date().toISOString(), sourceType: 'formance_payment', environment }
+        })
+      }
+      setPayments(prev => [...createdList, ...prev])
+    } catch {} finally {
+      setCreating(c => ({ ...c, seeding: false }))
     }
-    setPayments(prev => [...created, ...prev])
-    setCreating(c => ({ ...c, seeding: false }))
   }
 
   const resetAll = () => {
@@ -265,10 +293,7 @@ export function ConnectivityVisualizer() {
     setSelectedPayment(null)
   }
 
-  const resendWebhook = async (p: MockPayment) => {
-    const resp = await postWebhook(p.webhookRequest.url, p.webhookRequest.body)
-    setPayments(prev => prev.map(x => x.paymentId === p.paymentId ? { ...x, webhookResponse: resp.ok ? { status: resp.status, text: resp.text.slice(0, 200) } : { error: resp.text } } : x))
-  }
+  const resendWebhook = async (_p: MockPayment) => {}
 
   const [ledgerDetails, setLedgerDetails] = useState<{ accountId: string; volumes?: any; balances?: Record<string, number>; postings?: any[] } | null>(null)
   useEffect(() => {
@@ -307,11 +332,7 @@ export function ConnectivityVisualizer() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100">Connectivity Visualizer</h1>
           <span className="text-xs px-2 py-1 rounded border border-emerald-600 text-emerald-300 bg-emerald-900/20">Ledger: {ledger}</span>
-          <select className="input h-8" value={pspFilter} onChange={(e) => setPspFilter(e.target.value as any)}>
-            <option value="all">All PSPs</option>
-            <option value="stripe">Stripe-like</option>
-            <option value="adyen">Adyen-like</option>
-          </select>
+          <div className="text-xs text-slate-400">Formance syncs Payments; click Refresh to update ledger.</div>
         </div>
         <div className="flex items-center gap-2">
           <input className="input h-8 w-40" value={ledger} onChange={(e) => setLedger(e.target.value)} />
@@ -323,54 +344,21 @@ export function ConnectivityVisualizer() {
             <X className="h-4 w-4" />
             <span>Reset</span>
           </button>
-          <button className="btn inline-flex items-center gap-2 px-3 h-9" onClick={() => setSettingsOpen(true)}>
-            <Settings className="h-4 w-4" />
-            <span>Settings</span>
+          <button className="btn inline-flex items-center gap-2 px-3 h-9" onClick={() => setLedgerRefreshNonce(n=>n+1)}>
+            <RefreshCcw className="h-4 w-4" />
+            <span>Refresh from ledger</span>
           </button>
         </div>
       </div>
 
-      {settingsOpen && (
-        <div className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium">Settings</div>
-            <button className="text-slate-300 hover:text-white" onClick={() => setSettingsOpen(false)}><X className="h-4 w-4" /></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="label">Formance Webhook URL</label>
-              <input className="input" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="/connectivity/webhooks" />
-            </div>
-            <div>
-              <label className="label">Shared secret (optional)</label>
-              <input className="input" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="secret" />
-            </div>
-            <div>
-              <label className="label">Environment tag</label>
-              <input className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} placeholder="sandbox" />
-            </div>
-            <div>
-              <label className="label">Webhook username</label>
-              <input className="input" value={webhookUser} onChange={(e) => setWebhookUser(e.target.value)} placeholder="test" />
-            </div>
-            <div>
-              <label className="label">Webhook password</label>
-              <input className="input" value={webhookPass} onChange={(e) => setWebhookPass(e.target.value)} placeholder="test" />
-            </div>
-          </div>
-        </div>
-      )}
+      {settingsOpen && null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card space-y-3">
           <div className="text-sm font-medium">Actions</div>
           <div>
-            <div className="text-xs text-slate-400 mb-1">Create PSP Account</div>
+            <div className="text-xs text-slate-400 mb-1">Create External Account (Payments)</div>
             <div className="grid grid-cols-2 gap-2">
-              <select className="input h-9" value={formAccount.psp} onChange={(e) => setFormAccount({ ...formAccount, psp: e.target.value as Psp })}>
-                <option value="stripe">Stripe-like</option>
-                <option value="adyen">Adyen-like</option>
-              </select>
               <input className="input h-9" placeholder="Merchant name" value={formAccount.merchantName} onChange={(e) => setFormAccount({ ...formAccount, merchantName: e.target.value })} />
               <input className="input h-9" placeholder="Currency (ISO)" value={formAccount.currency} onChange={(e) => setFormAccount({ ...formAccount, currency: e.target.value })} />
               <input className="input h-9" placeholder="Linked Ledger Account (optional)" value={formAccount.linkedLedgerAccountId} onChange={(e) => setFormAccount({ ...formAccount, linkedLedgerAccountId: e.target.value })} />
@@ -378,32 +366,27 @@ export function ConnectivityVisualizer() {
             <div className="mt-2">
               <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={createPspAccount} disabled={!!creating.account}>
                 <Plus className="h-4 w-4" />
-                <span>Create PSP Account</span>
+                <span>Create Account</span>
               </button>
             </div>
           </div>
           <div>
-            <div className="text-xs text-slate-400 mb-1">Create Payment</div>
+            <div className="text-xs text-slate-400 mb-1">Create Payment (Payments v3)</div>
             <div className="grid grid-cols-2 gap-2">
-              <select className="input h-9" value={formPayment.psp} onChange={(e) => setFormPayment({ ...formPayment, psp: e.target.value as Psp, pspAccountId: '' })}>
-                <option value="stripe">Stripe-like</option>
-                <option value="adyen">Adyen-like</option>
-              </select>
               <select className="input h-9" value={formPayment.pspAccountId} onChange={(e) => setFormPayment({ ...formPayment, pspAccountId: e.target.value })}>
                 <option value="">Choose account…</option>
-                {accounts.filter(a => a.psp === formPayment.psp).map(a => (
+                {accounts.map(a => (
                   <option key={a.id} value={a.id}>{a.psp} • {a.id}</option>
                 ))}
               </select>
               <input className="input h-9" placeholder="Amount (major)" value={formPayment.amountMajor} onChange={(e) => setFormPayment({ ...formPayment, amountMajor: e.target.value })} />
               <input className="input h-9" placeholder="Currency" value={formPayment.currency} onChange={(e) => setFormPayment({ ...formPayment, currency: e.target.value })} />
               <input className="input h-9" placeholder="Description" value={formPayment.description} onChange={(e) => setFormPayment({ ...formPayment, description: e.target.value })} />
-              <input className="input h-9" placeholder="Customer ID" value={formPayment.customerId} onChange={(e) => setFormPayment({ ...formPayment, customerId: e.target.value })} />
             </div>
             <div className="mt-2 flex items-center gap-2">
               <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={createPayment} disabled={!!creating.payment || !formPayment.pspAccountId}>
                 <Send className="h-4 w-4" />
-                <span>Create Payment (send webhook)</span>
+                <span>Create Payment</span>
               </button>
               <button className="btn inline-flex items-center gap-2 px-3 h-9" onClick={seedData}>
                 <Repeat className="h-4 w-4" />
@@ -423,14 +406,12 @@ export function ConnectivityVisualizer() {
 
           {tab === 'overview' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(['stripe','adyen'] as Psp[]).map(key => (
-                <div key={key} className="p-4 rounded border border-slate-800 bg-slate-900/60">
-                  <div className="text-xs text-slate-400">{key.toUpperCase()}</div>
-                  <div className="text-lg text-slate-100">{kpis[key]?.count || 0} payments</div>
-                  <div className="text-xs text-slate-400">Succeeded: {kpis[key]?.succeeded || 0} • Refunded: {kpis[key]?.refunded || 0}</div>
-                  <div className="text-xs text-slate-400">Total: {formatMajor(kpis[key]?.amountMinor || 0, 'USD')}</div>
-                </div>
-              ))}
+              <div className="p-4 rounded border border-slate-800 bg-slate-900/60">
+                <div className="text-xs text-slate-400">Payments</div>
+                <div className="text-lg text-slate-100">{kpis.count} payments</div>
+                <div className="text-xs text-slate-400">Succeeded: {kpis.succeeded} • Refunded: {kpis.refunded}</div>
+                <div className="text-xs text-slate-400">Total: {formatMajor(kpis.amountMinor, 'USD')}</div>
+              </div>
             </div>
           )}
 
@@ -537,20 +518,20 @@ export function ConnectivityVisualizer() {
                     <th>amount</th>
                     <th>currency</th>
                     <th>createdAt</th>
-                    <th>webhookStatus</th>
+                    
                   </tr>
                 </thead>
                 <tbody>
                   {visiblePayments.map(p => (
                     <tr key={p.paymentId} className="border-t border-slate-800 hover:bg-slate-800/60 cursor-pointer" onClick={() => setSelectedPayment(p)}>
-                      <td className="py-2">{p.normalizedEvent.sourceType.startsWith('stripe') ? 'stripe' : 'adyen'}</td>
+                      <td className="py-2">payments</td>
                       <td className="font-mono">{p.paymentId}</td>
                       <td className="font-mono text-xs">{p.normalizedEvent.pspAccountId}</td>
                       <td>{p.status}</td>
                       <td>{(p.normalizedEvent.amountMinor/100).toFixed(2)}</td>
                       <td>{p.normalizedEvent.currency}</td>
                       <td className="text-xs">{new Date(p.createdAt).toLocaleString()}</td>
-                      <td className="text-xs">{p.webhookResponse && 'status' in p.webhookResponse ? p.webhookResponse.status : (p.webhookResponse && 'error' in p.webhookResponse ? 'error' : '—')}</td>
+                      
                     </tr>
                   ))}
                 </tbody>
@@ -574,18 +555,15 @@ export function ConnectivityVisualizer() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
                     <div className="p-2 rounded border border-slate-800">
-                      <div className="text-xs text-slate-400 mb-1">Webhook request</div>
-                      <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(selectedPayment.webhookRequest, null, 2)}</pre>
+                      <div className="text-xs text-slate-400 mb-1">Event (raw)</div>
+                      <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(selectedPayment.rawPspEvent, null, 2)}</pre>
                     </div>
                     <div className="p-2 rounded border border-slate-800">
-                      <div className="text-xs text-slate-400 mb-1">Webhook response</div>
-                      <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(selectedPayment.webhookResponse || {}, null, 2)}</pre>
+                      <div className="text-xs text-slate-400 mb-1">Normalized</div>
+                      <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(selectedPayment.normalizedEvent, null, 2)}</pre>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <button className="btn inline-flex items-center gap-2 h-9 px-3" onClick={() => resendWebhook(selectedPayment)}>
-                      <Repeat className="h-4 w-4"/> Resend webhook
-                    </button>
                     <button className="btn inline-flex items-center gap-2 h-9 px-3" onClick={() => navigator.clipboard.writeText(JSON.stringify(selectedPayment.rawPspEvent))}>
                       <Copy className="h-4 w-4"/> Copy payload
                     </button>
