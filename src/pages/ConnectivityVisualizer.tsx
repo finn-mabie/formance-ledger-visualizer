@@ -70,9 +70,11 @@ export function ConnectivityVisualizer() {
   const [payments, setPayments] = useState<MockPayment[]>([])
   const [tab, setTab] = useState<'overview' | 'accounts' | 'payments' | 'graph'>('overview')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [webhookUrl, setWebhookUrl] = useState<string>('https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/connectors/webhooks/adyen/eyJQcm92aWRlciI6ImFkeWVuIiwiUmVmZXJlbmNlIjoiNzgyNDVhNjMtNDJmNi00NzVkLWEyYTMtZDFjNjczNjg2NjI4In0/')
+  const [webhookUrl, setWebhookUrl] = useState<string>('https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/connectors/webhooks/adyen/eyJQcm92aWRlciI6ImFkeWVuIiwiUmVmZXJlbmNlIjoiZTFiMDI1MjYtOTM4Ny00ZmYzLThkODItNGQxZmY2ZjAyNzNlIn0/')
   const [webhookSecret, setWebhookSecret] = useState<string>('')
   const [environment, setEnvironment] = useState<string>('sandbox')
+  const [webhookUser, setWebhookUser] = useState<string>('test')
+  const [webhookPass, setWebhookPass] = useState<string>('test')
   const [creating, setCreating] = useState<{ account?: boolean; payment?: boolean; seeding?: boolean }>({})
   const [formAccount, setFormAccount] = useState<{ psp: Psp; merchantName: string; currency: string; linkedLedgerAccountId: string }>({ psp: 'stripe', merchantName: '', currency: 'USD', linkedLedgerAccountId: '' })
   const [formPayment, setFormPayment] = useState<{ psp: Psp; pspAccountId: string; amountMajor: string; currency: string; description: string; customerId: string }>({ psp: 'stripe', pspAccountId: '', amountMajor: '10.00', currency: 'USD', description: '', customerId: '' })
@@ -172,6 +174,12 @@ export function ConnectivityVisualizer() {
   const postWebhook = async (url: string, body: any) => {
     const raw = JSON.stringify(body)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (webhookUser || webhookPass) {
+      try {
+        const token = btoa(`${webhookUser || ''}:${webhookPass || ''}`)
+        headers['Authorization'] = `Basic ${token}`
+      } catch {}
+    }
     if (webhookSecret) {
       const sig = await hmacSha256Hex(webhookSecret, raw)
       if (sig) headers['X-PSP-Signature'] = `sha256=${sig}`
@@ -340,6 +348,14 @@ export function ConnectivityVisualizer() {
             <div>
               <label className="label">Environment tag</label>
               <input className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} placeholder="sandbox" />
+            </div>
+            <div>
+              <label className="label">Webhook username</label>
+              <input className="input" value={webhookUser} onChange={(e) => setWebhookUser(e.target.value)} placeholder="test" />
+            </div>
+            <div>
+              <label className="label">Webhook password</label>
+              <input className="input" value={webhookPass} onChange={(e) => setWebhookPass(e.target.value)} placeholder="test" />
             </div>
           </div>
         </div>
