@@ -70,7 +70,7 @@ export function ConnectivityVisualizer() {
   const [payments, setPayments] = useState<MockPayment[]>([])
   const [tab, setTab] = useState<'overview' | 'accounts' | 'payments' | 'graph'>('overview')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [webhookUrl, setWebhookUrl] = useState<string>('https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/connectors/webhooks/adyen/eyJQcm92aWRlciI6ImFkeWVuIiwiUmVmZXJlbmNlIjoiZTFiMDI1MjYtOTM4Ny00ZmYzLThkODItNGQxZmY2ZjAyNzNlIn0/')
+  const [webhookUrl, setWebhookUrl] = useState<string>('https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/v3/connectors/webhooks/eyJQcm92aWRlciI6ImFkeWVuIiwiUmVmZXJlbmNlIjoiZTFiMDI1MjYtOTM4Ny00ZmYzLThkODItNGQxZmY2ZjAyNzNlIn0/')
   const [webhookSecret, setWebhookSecret] = useState<string>('')
   const [environment, setEnvironment] = useState<string>('sandbox')
   const [webhookUser, setWebhookUser] = useState<string>('test')
