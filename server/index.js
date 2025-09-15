@@ -10,50 +10,6 @@ app.use(express.json({ limit: '10mb' }))
 const LEDGER_BASE = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/ledger/v2'
 const PAYMENTS_BASE = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/v3'
 
-// Stripe configuration (server-side only)
-const STRIPE_BASE = 'https://api.stripe.com/v1'
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_51Rr1W62Loqoft2LQT3YJfbXd9BqZ2h3qF4Kdq806bSR6tWbtRz9GSBmPjmRvuQyCUJs1tlZOk8Ox47B4gne8UB5U00btmoMnde'
-
-function toForm(params) {
-  const search = new URLSearchParams()
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v === undefined || v === null) return
-    if (typeof v === 'object' && !Array.isArray(v)) {
-      Object.entries(v).forEach(([k2, v2]) => {
-        if (typeof v2 === 'object' && !Array.isArray(v2)) {
-          Object.entries(v2).forEach(([k3, v3]) => search.append(`${k}[${k2}][${k3}]`, String(v3)))
-        } else {
-          search.append(`${k}[${k2}]`, String(v2))
-        }
-      })
-    } else if (Array.isArray(v)) {
-      v.forEach((val, i) => search.append(`${k}[${i}]`, String(val)))
-    } else {
-      search.append(k, String(v))
-    }
-  })
-  return search.toString()
-}
-
-async function stripeRequest(path, { method = 'GET', body = null } = {}) {
-  const headers = { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` }
-  let url = `${STRIPE_BASE}${path}`
-  let fetchOpts = { method, headers }
-  if (method !== 'GET' && body) {
-    headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    fetchOpts.body = toForm(body)
-  }
-  const r = await fetch(url, fetchOpts)
-  const text = await r.text()
-  let json = {}
-  try { json = JSON.parse(text) } catch { json = { raw: text } }
-  if (!r.ok) {
-    const msg = json.error?.message || text || 'Stripe error'
-    throw new Error(msg)
-  }
-  return json
-}
-
 // Default credentials (can be overridden by /api/credentials POST)
 let defaultClientId = '38c6862b-327c-4c7c-b93c-00c0fac5a05f';
 let defaultClientSecret = '6881226f-ad85-4206-aa67-ccdd1031dc2b';
@@ -221,75 +177,6 @@ app.post('/api/payments/v3/payment-initiations/:id/approve', async (req, res) =>
     res.status(r.status).json(j)
   } catch (e) {
     res.status(500).json({ error: 'Failed to approve payment initiation' })
-  }
-})
-
-// Stripe endpoints
-app.get('/api/stripe/config', async (req, res) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_51Rr1W62Loqoft2LQ1o12A1gU2z3QXmmEatK3VqAJdKzfvKjfMQP88vTwMCEOH4lM1U20LdUxOK6jWrvZnUWaKXzp00hTsMGux7' })
-})
-
-// Create connected account (Custom by default)
-app.post('/api/stripe/accounts', async (req, res) => {
-  try {
-    const { type = 'custom', country = 'US', email, business_type = 'individual', capabilities = { card_payments: { requested: true }, transfers: { requested: true } } } = req.body || {}
-    const account = await stripeRequest('/accounts', { method: 'POST', body: { type, country, email, business_type, capabilities } })
-    res.json(account)
-  } catch (e) {
-    res.status(400).json({ error: String(e.message || e) })
-  }
-})
-
-// Create account link for Express onboarding
-app.post('/api/stripe/account_links', async (req, res) => {
-  try {
-    const { account, refresh_url, return_url, type = 'account_onboarding' } = req.body || {}
-    const link = await stripeRequest('/account_links', { method: 'POST', body: { account, refresh_url, return_url, type } })
-    res.json(link)
-  } catch (e) {
-    res.status(400).json({ error: String(e.message || e) })
-  }
-})
-
-// List connected accounts (simple list)
-app.get('/api/stripe/accounts', async (req, res) => {
-  try {
-    const list = await stripeRequest('/accounts')
-    res.json(list)
-  } catch (e) {
-    res.status(400).json({ error: String(e.message || e) })
-  }
-})
-
-// Create destination charge PaymentIntent
-app.post('/api/stripe/payment_intents', async (req, res) => {
-  try {
-    const { amount, currency, destination, application_fee_amount, description } = req.body || {}
-    const body = {
-      amount,
-      currency,
-      description,
-      'automatic_payment_methods[enabled]': 'true',
-      'transfer_data[destination]': destination,
-      payment_method: 'pm_card_visa',
-      confirm: 'true'
-    }
-    if (application_fee_amount) body['application_fee_amount'] = application_fee_amount
-    const pi = await stripeRequest('/payment_intents', { method: 'POST', body })
-    res.json(pi)
-  } catch (e) {
-    res.status(400).json({ error: String(e.message || e) })
-  }
-})
-
-// Refund
-app.post('/api/stripe/refunds', async (req, res) => {
-  try {
-    const { payment_intent, amount } = req.body || {}
-    const refund = await stripeRequest('/refunds', { method: 'POST', body: { payment_intent, amount } })
-    res.json(refund)
-  } catch (e) {
-    res.status(400).json({ error: String(e.message || e) })
   }
 })
 
