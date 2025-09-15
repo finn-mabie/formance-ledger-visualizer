@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
 import { Designer } from '@/pages/Designer'
 import { Marketplace } from '@/pages/Marketplace'
+import { ConnectivityVisualizer } from '@/pages/ConnectivityVisualizer'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
         <Route path="/" element={<Navigate to="/designer" replace />} />
         <Route path="/designer" element={<Designer />} />
         <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/connectivity" element={<ConnectivityVisualizer />} />
         <Route path="*" element={<Navigate to="/designer" replace />} />
       </Routes>
     </Layout>

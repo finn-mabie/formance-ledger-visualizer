@@ -1,14 +1,20 @@
 import { Designer } from '@/pages/Designer'
 import { AccountNode, TxnEdge } from '@/services/diagramAdapter'
 
+// Vertical tree layout
+const X_CENTER = 340
+const ROW_H = 120
+const BOX_W = 220
+const BOX_H = 60
+
 const initialAccounts: AccountNode[] = [
-  { id: 'world', label: 'world', elementId: 'el_world', x: 40, y: 40, w: 160, h: 60 },
-  { id: 'order:123:pending', label: 'order:123:pending', elementId: 'el_order_pending', x: 260, y: 40, w: 200, h: 60 },
-  { id: 'order:123:cleared', label: 'order:123:cleared', elementId: 'el_order_cleared', x: 520, y: 40, w: 200, h: 60 },
-  { id: 'order:123:vendor:01', label: 'order:123:vendor:01', elementId: 'el_order_vendor1', x: 260, y: 200, w: 220, h: 60 },
-  { id: 'order:123:vendor:02', label: 'order:123:vendor:02', elementId: 'el_order_vendor2', x: 520, y: 200, w: 220, h: 60 },
-  { id: 'vendor:01:wallet:main', label: 'vendor:01:wallet:main', elementId: 'el_vendor1_wallet', x: 260, y: 360, w: 220, h: 60 },
-  { id: 'vendor:02:wallet:main', label: 'vendor:02:wallet:main', elementId: 'el_vendor2_wallet', x: 520, y: 360, w: 220, h: 60 },
+  { id: 'world', label: 'world', elementId: 'el_world', x: X_CENTER, y: 20, w: BOX_W, h: BOX_H },
+  { id: 'order:123:pending', label: 'order:123:pending', elementId: 'el_order_pending', x: X_CENTER, y: 20 + ROW_H, w: BOX_W, h: BOX_H },
+  { id: 'order:123:cleared', label: 'order:123:cleared', elementId: 'el_order_cleared', x: X_CENTER, y: 20 + ROW_H * 2, w: BOX_W, h: BOX_H },
+  { id: 'order:123:vendor:01', label: 'order:123:vendor:01', elementId: 'el_order_vendor1', x: X_CENTER - 180, y: 20 + ROW_H * 3, w: BOX_W, h: BOX_H },
+  { id: 'order:123:vendor:02', label: 'order:123:vendor:02', elementId: 'el_order_vendor2', x: X_CENTER + 180, y: 20 + ROW_H * 3, w: BOX_W, h: BOX_H },
+  { id: 'vendor:01:wallet:main', label: 'vendor:01:wallet:main', elementId: 'el_vendor1_wallet', x: X_CENTER - 180, y: 20 + ROW_H * 4, w: BOX_W, h: BOX_H },
+  { id: 'vendor:02:wallet:main', label: 'vendor:02:wallet:main', elementId: 'el_vendor2_wallet', x: X_CENTER + 180, y: 20 + ROW_H * 4, w: BOX_W, h: BOX_H },
 ]
 
 const initialTransactions: TxnEdge[] = [

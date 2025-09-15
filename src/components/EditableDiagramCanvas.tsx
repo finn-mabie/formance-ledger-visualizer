@@ -36,7 +36,9 @@ export function EditableDiagramCanvas({
   animateNonce
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [zoom, setZoom] = useState<number>(1)
   const [editingAccount, setEditingAccount] = useState<string | null>(null)
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
   const [editingTxn, setEditingTxn] = useState<string | null>(null)
@@ -155,6 +157,16 @@ export function EditableDiagramCanvas({
         onRunTransaction()
         return
       }
+      if ((e.key === '+' || e.key === '=') && !e.shiftKey === false) {
+        e.preventDefault()
+        setZoom(z => Math.min(2, parseFloat((z + 0.1).toFixed(2))))
+        return
+      }
+      if (e.key === '-' ) {
+        e.preventDefault()
+        setZoom(z => Math.max(0.5, parseFloat((z - 0.1).toFixed(2))))
+        return
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -162,7 +174,8 @@ export function EditableDiagramCanvas({
 
   return (
     <div ref={containerRef} className="relative border border-slate-800 rounded overflow-auto bg-slate-950" style={{ height: 600 }}>
-      <svg className="absolute inset-0 z-0" width={width} height={height}>
+      <div className="absolute inset-0" style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', width, height }}>
+      <svg ref={svgRef} className="absolute inset-0 z-0" width={width} height={height}>
         {graph.transactions.map(t => {
           const from = findAccount(t.fromId)
           const to = findAccount(t.toId)
@@ -264,7 +277,6 @@ export function EditableDiagramCanvas({
           </g>
         )}
       </svg>
-      <div style={{ width, height }} />
       {graph.accounts.map(a => {
         const isEditingLabel = editingAccount === a.elementId
         const isEditingId = editingAccountId === a.elementId
@@ -358,6 +370,8 @@ export function EditableDiagramCanvas({
           </div>
         )
       })}
+      </div>
+      <div style={{ width: Math.ceil(width * zoom), height: Math.ceil(height * zoom) }} />
       {onRunTransaction && !arrowMode && (
         <div className="absolute right-2 top-2 text-xs text-slate-300 bg-slate-900/80 px-2 py-1 rounded shadow">
           Select one or more arrows, then press Enter to run

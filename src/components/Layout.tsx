@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, BarChart3, Store } from 'lucide-react'
+import { Menu, X, BarChart3, Store, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/utils/cn'
 import { ConnectionStatus } from './ConnectionStatus'
@@ -12,6 +12,7 @@ interface LayoutProps {
 const navigation = [
   { name: 'Designer', href: '/designer', icon: BarChart3 },
   { name: 'Marketplace', href: '/marketplace', icon: Store },
+  { name: 'Connectivity', href: '/connectivity', icon: Share2 },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -106,7 +107,6 @@ export function Layout({ children }: LayoutProps) {
               <div className="text-sm text-slate-300">
                 Formance Ledger Visualizer
               </div>
-              {/* Hide connection status per request (designer-only app) */}
             </div>
           </div>
         </div>
