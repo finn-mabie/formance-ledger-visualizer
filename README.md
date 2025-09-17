@@ -5,6 +5,9 @@ A comprehensive UI visualization tool that demonstrates the power and versatilit
 ## 🚀 Features
 
 - **Interactive Dashboard**: Real-time visualization of ledger data and statistics
+- **Orchestration Visualizer**: Manage Formance Flows (workflows) and triggers
+- **Connectivity Visualizer**: Manage Payments v3 accounts and transactions
+- **Live API Monitor**: Real-time monitoring of API calls
 - **Multiple Use Cases**: Demonstrations for different industries and applications
 - **Data Visualization**: Charts, graphs, and analytics using Recharts
 - **Modern UI**: Built with React, TypeScript, and Tailwind CSS
@@ -100,11 +103,30 @@ src/
 
 ## 🔧 Configuration
 
-The application uses mock data for demonstration purposes. To connect to a real Formance Ledger instance:
+The application connects to real Formance APIs. To configure your Formance instance:
 
-1. Update the `ledgerService.ts` file with your Formance Ledger API endpoint
-2. Replace mock data with actual API calls using the Formance SDK
-3. Configure authentication and API keys as needed
+1. Create a `.env` file in the root directory with the following variables:
+```bash
+FORMANCE_BASE_URL=https://your-formance-instance.formance.cloud
+FORMANCE_CLIENT_ID=your-client-id
+FORMANCE_CLIENT_SECRET=your-client-secret
+FORMANCE_TOKEN_ENDPOINT=https://your-formance-instance.formance.cloud/api/auth/oauth/token
+```
+
+2. Start the backend server:
+```bash
+npm run server
+```
+
+3. Start the frontend development server:
+```bash
+npm run dev
+```
+
+The application includes:
+- **Ledger v2**: Core accounting and transaction management
+- **Orchestration v2**: Workflow and automation engine
+- **Payments v3**: Payment processing and account management
 
 ## 📊 Data Visualization
 

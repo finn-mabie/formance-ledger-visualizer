@@ -13,8 +13,8 @@ const PAYMENTS_BASE = `${FOR_BASE}/api/payments/v3`
 const ORCHESTRATION_BASE = `${FOR_BASE}/api/orchestration/v2`
 
 // Default credentials (can be overridden by /api/credentials POST)
-let defaultClientId = process.env.FORMANCE_CLIENT_ID || '38c6862b-327c-4c7c-b93c-00c0fac5a05f';
-let defaultClientSecret = process.env.FORMANCE_CLIENT_SECRET || '6881226f-ad85-4206-aa67-ccdd1031dc2b';
+let defaultClientId = process.env.FORMANCE_CLIENT_ID;
+let defaultClientSecret = process.env.FORMANCE_CLIENT_SECRET;
 let defaultTokenEndpoint = process.env.FORMANCE_TOKEN_ENDPOINT || `${FOR_BASE}/api/auth/oauth/token`;
 
 // Initialize encryptedCreds with default credentials
@@ -48,8 +48,10 @@ function decrypt(data) {
   return decipher.update(encrypted, null, 'utf8') + decipher.final('utf8')
 }
 
-// Initialize with default credentials
-encryptedCreds = encrypt(JSON.stringify({ clientId: defaultClientId, clientSecret: defaultClientSecret }));
+// Initialize with default credentials if they exist
+if (defaultClientId && defaultClientSecret) {
+  encryptedCreds = encrypt(JSON.stringify({ clientId: defaultClientId, clientSecret: defaultClientSecret }));
+}
 
 let accessToken = null
 let tokenExpiry = null
