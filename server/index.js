@@ -7,13 +7,15 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 
-const LEDGER_BASE = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/ledger/v2'
-const PAYMENTS_BASE = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/v3'
+const FOR_BASE = process.env.FORMANCE_BASE_URL || 'https://htelokuekgot-tfyo.us-east-1.formance.cloud'
+const LEDGER_BASE = `${FOR_BASE}/api/ledger/v2`
+const PAYMENTS_BASE = `${FOR_BASE}/api/payments/v3`
+const ORCHESTRATION_BASE = `${FOR_BASE}/api/orchestration/v2`
 
 // Default credentials (can be overridden by /api/credentials POST)
-let defaultClientId = '38c6862b-327c-4c7c-b93c-00c0fac5a05f';
-let defaultClientSecret = '6881226f-ad85-4206-aa67-ccdd1031dc2b';
-let defaultTokenEndpoint = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/auth/oauth/token';
+let defaultClientId = process.env.FORMANCE_CLIENT_ID || '38c6862b-327c-4c7c-b93c-00c0fac5a05f';
+let defaultClientSecret = process.env.FORMANCE_CLIENT_SECRET || '6881226f-ad85-4206-aa67-ccdd1031dc2b';
+let defaultTokenEndpoint = process.env.FORMANCE_TOKEN_ENDPOINT || `${FOR_BASE}/api/auth/oauth/token`;
 
 // Initialize encryptedCreds with default credentials
 let encryptedCreds = null;
@@ -53,6 +55,9 @@ let accessToken = null
 let tokenExpiry = null
 
 async function getAccessToken() {
+  if (process.env.FORMANCE_API_TOKEN) {
+    return process.env.FORMANCE_API_TOKEN
+  }
   if (accessToken && tokenExpiry && new Date() < tokenExpiry) {
     return accessToken
   }
@@ -180,6 +185,352 @@ app.post('/api/payments/v3/payment-initiations/:id/approve', async (req, res) =>
   }
 })
 
+app.get('/api/payments/v3/connectors', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const r = await fetch(`${PAYMENTS_BASE}/connectors`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list connectors' })
+  }
+})
+
+app.get('/api/payments/v3/connectors/configurations', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const r = await fetch(`${PAYMENTS_BASE}/connectors/configurations`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list connector configurations' })
+  }
+})
+
+// Payments v3 additional proxies
+app.get('/api/payments/v3/payments/:id', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = req.params.id
+    const r = await fetch(`${PAYMENTS_BASE}/payments/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get payment' })
+  }
+})
+
+app.get('/api/payments/v3/payouts', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    const r = await fetch(`${PAYMENTS_BASE}/payouts${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list payouts' })
+  }
+})
+
+app.get('/api/payments/v3/accounts/:id', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = req.params.id
+    const r = await fetch(`${PAYMENTS_BASE}/accounts/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get account' })
+  }
+})
+
+// Payments v3: account balances
+app.get('/api/payments/v3/accounts/:id/balances', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = req.params.id // Don't encode again - Express already decodes it
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    const r = await fetch(`${PAYMENTS_BASE}/accounts/${encodeURIComponent(id)}/balances${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get account balances' })
+  }
+})
+
+// Orchestration v2 proxy endpoints
+app.get('/api/orchestration/v2/workflows', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows${qs}`, { method: 'GET', headers: { Authorization: `Bearer ${token}` } })
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list workflows' })
+  }
+})
+
+app.post('/api/orchestration/v2/workflows', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    // Forward either JSON or raw YAML/text based on incoming content-type
+    const incomingType = (req.headers['content-type'] || '').toLowerCase()
+    const isJson = incomingType.includes('application/json')
+    const upstreamHeaders = { Authorization: `Bearer ${token}` }
+    let body
+    if (isJson) {
+      upstreamHeaders['Content-Type'] = 'application/json'
+      body = JSON.stringify(req.body || {})
+    } else {
+      upstreamHeaders['Content-Type'] = incomingType || 'text/plain'
+      // Need raw text body; express.json won't give it. Re-serialize best-effort.
+      body = typeof req.body === 'string' ? req.body : (req.body && typeof req.body === 'object' ? JSON.stringify(req.body) : '')
+      // If body became '[object Object]', clear it to avoid corruption.
+      if (body === '[object Object]') body = ''
+    }
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows`, {
+      method: 'POST',
+      headers: upstreamHeaders,
+      body
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows`, { method: 'POST', headers: upstreamHeaders, body })
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create workflow' })
+  }
+})
+
+app.get('/api/orchestration/v2/workflows/:id', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.id)
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows/${id}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows/${id}`, { method: 'GET', headers: { Authorization: `Bearer ${token}` } })
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get workflow' })
+  }
+})
+
+app.delete('/api/orchestration/v2/workflows/:id', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.id)
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    }
+    if (r.status === 204) return res.status(204).send()
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete workflow' })
+  }
+})
+
+// Run a workflow (create instance)
+app.post('/api/orchestration/v2/workflows/:id/instances', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.id)
+    const upstreamHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    const provided = req.body || {}
+    const vars = provided.vars || provided.input || provided
+
+    // Try common shapes in order
+    const attemptBodies = [
+      JSON.stringify(vars),
+      JSON.stringify({ vars }),
+      JSON.stringify({ input: vars })
+    ]
+    let r = null
+    for (const body of attemptBodies) {
+      r = await fetch(`${ORCHESTRATION_BASE}/workflows/${id}/instances`, {
+        method: 'POST', headers: upstreamHeaders, body
+      })
+      if (r.status !== 404 && r.status !== 400) break
+      if (r.status === 404) {
+        const r2 = await fetch(`${ORCHESTRATION_BASE}/flows/${id}/instances`, { method: 'POST', headers: upstreamHeaders, body })
+        if (r2.status !== 400 && r2.status !== 404) { r = r2; break }
+      }
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to run workflow' })
+  }
+})
+
+app.get('/api/orchestration/v2/workflows/:id/instances', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.id)
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows/${id}/instances${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows/${id}/instances${qs}`, { method: 'GET', headers: { Authorization: `Bearer ${token}` } })
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list workflow instances' })
+  }
+})
+
+app.get('/api/orchestration/v2/workflows/:id/instances/:instanceId', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.id)
+    const instanceId = encodeURIComponent(req.params.instanceId)
+    let r = await fetch(`${ORCHESTRATION_BASE}/workflows/${id}/instances/${instanceId}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 404) {
+      r = await fetch(`${ORCHESTRATION_BASE}/flows/${id}/instances/${instanceId}`, { method: 'GET', headers: { Authorization: `Bearer ${token}` } })
+    }
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get workflow instance' })
+  }
+})
+
+// Triggers
+app.get('/api/orchestration/v2/triggers', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    const r = await fetch(`${ORCHESTRATION_BASE}/triggers${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list triggers' })
+  }
+})
+
+app.post('/api/orchestration/v2/triggers', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const r = await fetch(`${ORCHESTRATION_BASE}/triggers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(req.body || {})
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create trigger' })
+  }
+})
+
+app.get('/api/orchestration/v2/triggers/:triggerID', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.triggerID)
+    const r = await fetch(`${ORCHESTRATION_BASE}/triggers/${id}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to read trigger' })
+  }
+})
+
+app.delete('/api/orchestration/v2/triggers/:triggerID', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.triggerID)
+    const r = await fetch(`${ORCHESTRATION_BASE}/triggers/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (r.status === 204) return res.status(204).send()
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete trigger' })
+  }
+})
+
+app.post('/api/orchestration/v2/triggers/:triggerID/test', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const id = encodeURIComponent(req.params.triggerID)
+    const r = await fetch(`${ORCHESTRATION_BASE}/triggers/${id}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(req.body || {})
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to test trigger' })
+  }
+})
+
+// Orchestration: list all instances
+app.get('/api/orchestration/v2/instances', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+    let r = await fetch(`${ORCHESTRATION_BASE}/instances${qs}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    // no alternative path known; return result
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to list instances' })
+  }
+})
+
 // Proxy endpoints for listing resources with query parameter support
 app.get('/api/ledger/:ledger/accounts', async (req, res) => {
   try {
@@ -193,6 +544,22 @@ app.get('/api/ledger/:ledger/accounts', async (req, res) => {
     res.json(j)
   } catch (e) {
     res.status(500).json({ error: 'Failed to list accounts' })
+  }
+})
+
+app.get('/api/ledger/:ledger/accounts/:address', async (req, res) => {
+  try {
+    const token = await getAccessToken()
+    const ledger = encodeURIComponent(req.params.ledger)
+    const address = encodeURIComponent(req.params.address)
+    const r = await fetch(`${LEDGER_BASE}/${ledger}/accounts/${address}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const j = await r.json().catch(() => ({}))
+    res.status(r.status).json(j)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to get ledger account' })
   }
 })
 

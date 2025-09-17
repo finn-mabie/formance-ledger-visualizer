@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, BarChart3, Store, Share2 } from 'lucide-react'
+import { Menu, X, BarChart3, Store, Share2, Workflow, Search } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/utils/cn'
 import { ConnectionStatus } from './ConnectionStatus'
@@ -13,6 +13,8 @@ const navigation = [
   { name: 'Designer', href: '/designer', icon: BarChart3 },
   { name: 'Marketplace', href: '/marketplace', icon: Store },
   { name: 'Connectivity', href: '/connectivity', icon: Share2 },
+  { name: 'Orchestration', href: '/orchestration', icon: Workflow },
+  { name: 'Query Console', href: '/query', icon: Search },
 ]
 
 export function Layout({ children }: LayoutProps) {

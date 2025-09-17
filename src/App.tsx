@@ -3,6 +3,8 @@ import { Layout } from '@/components/Layout'
 import { Designer } from '@/pages/Designer'
 import { Marketplace } from '@/pages/Marketplace'
 import { ConnectivityVisualizer } from '@/pages/ConnectivityVisualizer'
+import { OrchestrationVisualizer } from '@/pages/OrchestrationVisualizer'
+import { QueryConsole } from '@/pages/QueryConsole'
 
 function App() {
   return (
@@ -12,6 +14,8 @@ function App() {
         <Route path="/designer" element={<Designer />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/connectivity" element={<ConnectivityVisualizer />} />
+        <Route path="/orchestration" element={<OrchestrationVisualizer />} />
+        <Route path="/query" element={<QueryConsole />} />
         <Route path="*" element={<Navigate to="/designer" replace />} />
       </Routes>
     </Layout>

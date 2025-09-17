@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Settings, Plus, RefreshCcw, Send, Copy, Repeat, X, ChevronRight, Link2, CreditCard } from 'lucide-react'
+import { LiveAPIMonitor } from '@/components/LiveAPIMonitor'
 import { searchAccounts, searchTransactions } from '@/services/ledgerAdapter'
+import { getPaymentsApi, postPaymentsApi } from '@/services/paymentsAdapter'
 
 type Psp = 'payments'
 
@@ -13,6 +15,7 @@ type ExternalPspAccount = {
   metadata?: Record<string, any>
   createdAt: string
   lastActivity?: string
+  reference?: string
 }
 
 type MockPaymentInput = {
@@ -54,13 +57,13 @@ export function ConnectivityVisualizer() {
   const [pspFilter, setPspFilter] = useState<Psp | 'all'>('all')
   const [accounts, setAccounts] = useState<ExternalPspAccount[]>([])
   const [payments, setPayments] = useState<MockPayment[]>([])
-  const [tab, setTab] = useState<'overview' | 'accounts' | 'payments' | 'graph'>('overview')
+  const [tab, setTab] = useState<'overview' | 'payments' | 'accounts'>('overview')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [environment, setEnvironment] = useState<string>('sandbox')
   const [creating, setCreating] = useState<{ account?: boolean; payment?: boolean; seeding?: boolean }>({})
   const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0)
-  const [formAccount, setFormAccount] = useState<{ merchantName: string; currency: string; linkedLedgerAccountId: string }>({ merchantName: '', currency: 'USD', linkedLedgerAccountId: '' })
-  const [formPayment, setFormPayment] = useState<{ pspAccountId: string; amountMajor: string; currency: string; description: string }>({ pspAccountId: '', amountMajor: '10.00', currency: 'USD', description: '' })
+  const [formAccount, setFormAccount] = useState<{ accountName: string; defaultAsset: string; type: string }>({ accountName: '', defaultAsset: 'USD/2', type: 'INTERNAL' })
+  const [formPayment, setFormPayment] = useState<{ type: string; amount: string; asset: string; sourceAccountID: string; destinationAccountID: string }>({ type: 'PAY-IN', amount: '100', asset: 'USD/2', sourceAccountID: '', destinationAccountID: '' })
   const [selectedAccount, setSelectedAccount] = useState<ExternalPspAccount | null>(null)
   const [selectedPayment, setSelectedPayment] = useState<MockPayment | null>(null)
 
@@ -79,29 +82,55 @@ export function ConnectivityVisualizer() {
   }, [visiblePayments])
 
   const api = {
-    get: async (url: string) => (await fetch(url)).json(),
-    post: async (url: string, body: any) => (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json()
+    get: getPaymentsApi,
+    post: postPaymentsApi
+  }
+
+  const [connectorId] = useState<string>('eyJQcm92aWRlciI6ImdlbmVyaWMiLCJSZWZlcmVuY2UiOiIxYWRlNWMzZC01NTIxLTRiYzAtYjY4OS01YmY1NzQ0MTA3ODIifQ')
+
+  // Connector ID is fixed per requirements; skip auto-discovery
+  const loadConnectors = async () => {}
+
+  const getMostRecentBalance = async (accountId: string): Promise<{ asset: string; balance: number } | null> => {
+    try {
+      const res = await api.get(`/api/payments/v3/accounts/${encodeURIComponent(accountId)}/balances`)
+      const rows = (res?.cursor?.data || res?.data || []) as any[]
+      if (!rows.length) return null
+      // Sort by lastUpdatedAt (most recent first)
+      rows.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt || 0).getTime() - new Date(a.lastUpdatedAt || a.createdAt || 0).getTime())
+      const mostRecent = rows[0]
+      return { asset: mostRecent.asset, balance: mostRecent.balance }
+    } catch (err) {
+      return null
+    }
   }
 
   const loadPaymentsAccounts = async () => {
     try {
-      const list = await api.get('/api/payments/v3/accounts')
+      const list = await api.get('/api/payments/v3/accounts?pageSize=100')
       const data = (list?.cursor?.data || []) as any[]
-      const mapped: ExternalPspAccount[] = data.map((acc: any) => ({
-        id: acc.id,
-        psp: 'payments',
-        merchantName: acc.name || acc.accountName || acc.reference || 'External account',
-        currency: (acc.defaultAsset || 'USD').toUpperCase(),
-        metadata: acc.metadata || {},
-        createdAt: acc.createdAt || new Date().toISOString()
-      }))
+      const mapped: ExternalPspAccount[] = await Promise.all(
+        data.map(async (acc: any) => {
+          const latest = await getMostRecentBalance(acc.id)
+          return {
+            id: acc.id,
+            psp: 'payments',
+            merchantName: acc.accountName || acc.name || acc.reference || 'External account',
+            currency: (acc.defaultAsset || 'USD').toUpperCase(),
+            metadata: acc.metadata || {},
+            createdAt: acc.createdAt || new Date().toISOString(),
+            reference: acc.reference,
+            ...(latest ? { __latestBalance: latest } as any : {})
+          }
+        })
+      )
       setAccounts(mapped)
     } catch {}
   }
 
   const loadPayments = async () => {
     try {
-      const list = await api.get('/api/payments/v3/payments')
+      const list = await api.get('/api/payments/v3/payments?pageSize=100')
       const data = (list?.cursor?.data || []) as any[]
       const mapped: MockPayment[] = data.map((p: any) => ({
         paymentId: p.id || p.reference || Math.random().toString(36).slice(2,10),
@@ -122,30 +151,32 @@ export function ConnectivityVisualizer() {
     } catch {}
   }
 
-  useEffect(() => { loadPaymentsAccounts(); loadPayments() }, [])
+  useEffect(() => { loadConnectors(); loadPaymentsAccounts(); loadPayments() }, [])
 
   const createPspAccount = async () => {
     setCreating(c => ({ ...c, account: true }))
     try {
       const now = new Date().toISOString()
+      const reference = (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? (crypto as any).randomUUID() : 'acct_' + Math.random().toString(36).slice(2,10)
       const body: any = {
-        reference: 'acct_' + Math.random().toString(36).slice(2,8),
+        reference,
+        connectorID: connectorId,
         createdAt: now,
-        accountName: formAccount.merchantName || 'Demo Merchant',
-        type: 'EXTERNAL',
-        defaultAsset: (formAccount.currency || 'USD').toUpperCase(),
-        metadata: formAccount.linkedLedgerAccountId ? { linkedLedgerAccountId: formAccount.linkedLedgerAccountId } : {}
+        accountName: formAccount.accountName || 'root',
+        type: formAccount.type || 'INTERNAL',
+        defaultAsset: formAccount.defaultAsset || 'USD/2',
+        metadata: {}
       }
       const acc = await api.post('/api/payments/v3/accounts', body)
       const row = acc?.data || acc
       const mapped: ExternalPspAccount = {
         id: row.id,
         psp: 'payments',
-        merchantName: row.name || row.accountName || row.reference || body.accountName,
+        merchantName: row.accountName || row.name || row.reference || body.accountName,
         currency: (row.defaultAsset || body.defaultAsset || 'USD').toUpperCase(),
-        linkedLedgerAccountId: formAccount.linkedLedgerAccountId || undefined,
         metadata: row.metadata || {},
-        createdAt: row.createdAt || now
+        createdAt: row.createdAt || now,
+        reference: row.reference || reference
       }
       setAccounts(prev => [mapped, ...prev])
     } catch {} finally {
@@ -215,39 +246,51 @@ export function ConnectivityVisualizer() {
   const createPayment = async () => {
     setCreating(c => ({ ...c, payment: true }))
     try {
-      const acc = accounts.find(a => a.id === formPayment.pspAccountId)
-      if (!acc) { setCreating(c => ({ ...c, payment: false })); return }
-      const amountMinor = Math.round(Number(formPayment.amountMajor || '0') * 100)
+      const amountMinor = parseInt(formPayment.amount || '0', 10) || 0
       const now = new Date().toISOString()
+      const reference = 'txn_' + Math.random().toString(36).slice(2,10)
       const body: any = {
-        reference: 'pay_' + Math.random().toString(36).slice(2,10),
+        reference,
+        connectorID: connectorId,
         createdAt: now,
-        type: 'PAY-IN',
+        type: formPayment.type || 'PAY-IN',
         initialAmount: amountMinor,
         amount: amountMinor,
-        asset: (formPayment.currency || acc.currency || 'USD').toUpperCase(),
-        destinationAccountID: acc.id,
-        metadata: formPayment.description ? { description: formPayment.description } : {}
+        asset: formPayment.asset || 'USD/2',
+        status: 'SUCCEEDED',
+        scheme: 'CARD_VISA',
+        metadata: {},
+        sourceAccountID: formPayment.sourceAccountID || null,
+        destinationAccountID: formPayment.destinationAccountID || null,
+        adjustments: [
+          {
+            reference: 'adj_001',
+            createdAt: now,
+            status: 'SUCCEEDED',
+            amount: amountMinor,
+            asset: formPayment.asset || 'USD/2',
+            metadata: {}
+          }
+        ]
       }
       const created = await api.post('/api/payments/v3/payments', body)
       const row = created?.data || created
       const payment: MockPayment = {
-        paymentId: row.id || body.reference,
+        paymentId: row.id || reference,
         createdAt: row.createdAt || now,
         status: (row.status || 'succeeded').toLowerCase(),
         rawPspEvent: row,
         normalizedEvent: {
-          externalPaymentId: row.id || body.reference,
-          pspAccountId: acc.id,
-          amountMinor,
-          currency: body.asset,
+          externalPaymentId: row.id || reference,
+          pspAccountId: row.destinationAccountID || row.sourceAccountID || '',
+          amountMinor: amountMinor,
+          currency: (body.asset || 'USD/2').toUpperCase(),
           occurredAt: row.createdAt || now,
           sourceType: 'formance_payment',
           environment
         }
       }
       setPayments(prev => [payment, ...prev])
-      setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, lastActivity: now } : a))
     } catch {} finally {
       setCreating(c => ({ ...c, payment: false }))
     }
@@ -257,8 +300,8 @@ export function ConnectivityVisualizer() {
     setCreating(c => ({ ...c, seeding: true }))
     try {
       const now = new Date().toISOString()
-      const acc1 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_1', createdAt: now, accountName: 'Merchant USD', type: 'EXTERNAL', defaultAsset: 'USD' })
-      const acc2 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_2', createdAt: now, accountName: 'Merchant EUR', type: 'EXTERNAL', defaultAsset: 'EUR' })
+      const acc1 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_1', createdAt: now, accountName: 'Merchant USD', type: 'EXTERNAL', defaultAsset: 'USD', connectorID: connectorId })
+      const acc2 = await api.post('/api/payments/v3/accounts', { reference: 'seed_acct_2', createdAt: now, accountName: 'Merchant EUR', type: 'EXTERNAL', defaultAsset: 'EUR', connectorID: connectorId })
       const a1 = acc1?.data || acc1
       const a2 = acc2?.data || acc2
       const mapped1: ExternalPspAccount = { id: a1.id, psp: 'payments', merchantName: 'Merchant USD', currency: 'USD', createdAt: a1.createdAt || now }
@@ -270,7 +313,7 @@ export function ConnectivityVisualizer() {
       for (let i = 0; i < n; i++) {
         const acc = accs[i % accs.length]
         const amountMinor = (5 + Math.floor(Math.random() * 200)) * 100
-        const row = await api.post('/api/payments/v3/payments', { reference: 'seed_'+i, createdAt: new Date().toISOString(), type: 'PAY-IN', initialAmount: amountMinor, amount: amountMinor, asset: acc.currency, destinationAccountID: acc.id })
+        const row = await api.post('/api/payments/v3/payments', { reference: 'seed_'+i, createdAt: new Date().toISOString(), type: 'PAY-IN', initialAmount: amountMinor, amount: amountMinor, asset: acc.currency, destinationAccountID: acc.id, connectorID: connectorId })
         const pr = row?.data || row
         createdList.push({
           paymentId: pr.id || 'seed_'+i,
@@ -357,11 +400,14 @@ export function ConnectivityVisualizer() {
         <div className="card space-y-3">
           <div className="text-sm font-medium">Actions</div>
           <div>
-            <div className="text-xs text-slate-400 mb-1">Create External Account (Payments)</div>
+            <div className="text-xs text-slate-400 mb-1">Create Account (Payments v3)</div>
             <div className="grid grid-cols-2 gap-2">
-              <input className="input h-9" placeholder="Merchant name" value={formAccount.merchantName} onChange={(e) => setFormAccount({ ...formAccount, merchantName: e.target.value })} />
-              <input className="input h-9" placeholder="Currency (ISO)" value={formAccount.currency} onChange={(e) => setFormAccount({ ...formAccount, currency: e.target.value })} />
-              <input className="input h-9" placeholder="Linked Ledger Account (optional)" value={formAccount.linkedLedgerAccountId} onChange={(e) => setFormAccount({ ...formAccount, linkedLedgerAccountId: e.target.value })} />
+              <input className="input h-9" placeholder="account name" value={formAccount.accountName} onChange={(e) => setFormAccount({ ...formAccount, accountName: e.target.value })} />
+              <input className="input h-9" placeholder="defaultAsset (e.g., USD/2)" value={formAccount.defaultAsset} onChange={(e) => setFormAccount({ ...formAccount, defaultAsset: e.target.value })} />
+              <select className="input h-9" value={formAccount.type} onChange={(e) => setFormAccount({ ...formAccount, type: e.target.value })}>
+                <option value="INTERNAL">INTERNAL</option>
+                <option value="EXTERNAL">EXTERNAL</option>
+              </select>
             </div>
             <div className="mt-2">
               <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={createPspAccount} disabled={!!creating.account}>
@@ -373,24 +419,30 @@ export function ConnectivityVisualizer() {
           <div>
             <div className="text-xs text-slate-400 mb-1">Create Payment (Payments v3)</div>
             <div className="grid grid-cols-2 gap-2">
-              <select className="input h-9" value={formPayment.pspAccountId} onChange={(e) => setFormPayment({ ...formPayment, pspAccountId: e.target.value })}>
-                <option value="">Choose account…</option>
+              <select className="input h-9" value={formPayment.type} onChange={(e) => setFormPayment({ ...formPayment, type: e.target.value })}>
+                <option value="PAY-IN">PAY-IN</option>
+                <option value="PAYOUT">PAYOUT</option>
+                <option value="TRANSFER">TRANSFER</option>
+              </select>
+              <input className="input h-9" placeholder="amount (minor units)" value={formPayment.amount} onChange={(e) => setFormPayment({ ...formPayment, amount: e.target.value })} />
+              <input className="input h-9" placeholder="asset (e.g., USD/2)" value={formPayment.asset} onChange={(e) => setFormPayment({ ...formPayment, asset: e.target.value })} />
+              <select className="input h-9" value={formPayment.sourceAccountID} onChange={(e) => setFormPayment({ ...formPayment, sourceAccountID: e.target.value })}>
+                <option value="">Choose source account…</option>
                 {accounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.psp} • {a.id}</option>
+                  <option key={a.id} value={a.id}>{a.merchantName || a.reference || a.id}</option>
                 ))}
               </select>
-              <input className="input h-9" placeholder="Amount (major)" value={formPayment.amountMajor} onChange={(e) => setFormPayment({ ...formPayment, amountMajor: e.target.value })} />
-              <input className="input h-9" placeholder="Currency" value={formPayment.currency} onChange={(e) => setFormPayment({ ...formPayment, currency: e.target.value })} />
-              <input className="input h-9" placeholder="Description" value={formPayment.description} onChange={(e) => setFormPayment({ ...formPayment, description: e.target.value })} />
+              <select className="input h-9" value={formPayment.destinationAccountID} onChange={(e) => setFormPayment({ ...formPayment, destinationAccountID: e.target.value })}>
+                <option value="">Choose destination account…</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.merchantName || a.reference || a.id}</option>
+                ))}
+              </select>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={createPayment} disabled={!!creating.payment || !formPayment.pspAccountId}>
+              <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={createPayment} disabled={!!creating.payment || !formPayment.type || !formPayment.amount || !formPayment.asset || !formPayment.sourceAccountID || !formPayment.destinationAccountID}>
                 <Send className="h-4 w-4" />
                 <span>Create Payment</span>
-              </button>
-              <button className="btn inline-flex items-center gap-2 px-3 h-9" onClick={seedData}>
-                <Repeat className="h-4 w-4" />
-                <span>Emit random</span>
               </button>
             </div>
           </div>
@@ -399,9 +451,8 @@ export function ConnectivityVisualizer() {
         <div className="lg:col-span-2 card">
           <div className="flex items-center gap-2 mb-3">
             <button className={`btn ${tab==='overview'?'btn-primary':''}`} onClick={() => setTab('overview')}>Overview</button>
-            <button className={`btn ${tab==='accounts'?'btn-primary':''}`} onClick={() => setTab('accounts')}>Accounts</button>
             <button className={`btn ${tab==='payments'?'btn-primary':''}`} onClick={() => setTab('payments')}>Payments</button>
-            <button className={`btn ${tab==='graph'?'btn-primary':''}`} onClick={() => setTab('graph')}>Graph</button>
+            <button className={`btn ${tab==='accounts'?'btn-primary':''}`} onClick={() => { setTab('accounts'); loadPaymentsAccounts() }}>Accounts</button>
           </div>
 
           {tab === 'overview' && (
@@ -412,6 +463,10 @@ export function ConnectivityVisualizer() {
                 <div className="text-xs text-slate-400">Succeeded: {kpis.succeeded} • Refunded: {kpis.refunded}</div>
                 <div className="text-xs text-slate-400">Total: {formatMajor(kpis.amountMinor, 'USD')}</div>
               </div>
+              <div className="p-4 rounded border border-slate-800 bg-slate-900/60">
+                <div className="text-xs text-slate-400">Accounts</div>
+                <div className="text-lg text-slate-100">{accounts.length} accounts</div>
+              </div>
             </div>
           )}
 
@@ -420,25 +475,19 @@ export function ConnectivityVisualizer() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-400">
-                    <th className="py-2">psp</th>
-                    <th>pspAccountId</th>
-                    <th>merchantName</th>
-                    <th>currency</th>
-                    <th>linkedLedgerAccountId</th>
+                    <th className="py-2">id</th>
+                    <th>name</th>
+                    <th>reference</th>
                     <th>balance</th>
-                    <th>lastActivity</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleAccounts.map(a => (
-                    <tr key={a.id} className="border-t border-slate-800 hover:bg-slate-800/60 cursor-pointer" onClick={() => setSelectedAccount(a)}>
-                      <td className="py-2">{a.psp}</td>
-                      <td className="font-mono">{a.id}</td>
-                      <td>{a.merchantName}</td>
-                      <td>{a.currency}</td>
-                      <td className="font-mono text-xs">{a.linkedLedgerAccountId || '—'}</td>
-                      <td className="text-xs">{a.linkedLedgerAccountId && ledgerDetails?.accountId === a.linkedLedgerAccountId && ledgerDetails?.balances && Object.keys(ledgerDetails.balances).length>0 ? Object.entries(ledgerDetails.balances).map(([as,bal]) => `${as}: ${bal}`).join(' • ') : '—'}</td>
-                      <td className="text-xs">{a.lastActivity ? new Date(a.lastActivity).toLocaleString() : '—'}</td>
+                  {visibleAccounts.map((a:any) => (
+                    <tr key={a.id} className="border-t border-slate-800 hover:bg-slate-800/60">
+                      <td className="py-2 font-mono text-xs" title={a.id}>{String(a.id).slice(0,10)}…</td>
+                      <td className="text-xs">{a.merchantName || '—'}</td>
+                      <td className="font-mono text-xs" title={a.reference || ''}>{a.reference || '—'}</td>
+                      <td className="text-xs">{a.__latestBalance ? `${a.__latestBalance.asset} ${a.__latestBalance.balance}` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -511,27 +560,21 @@ export function ConnectivityVisualizer() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-400">
-                    <th className="py-2">psp</th>
-                    <th>paymentId</th>
-                    <th>pspAccountId</th>
+                    <th className="py-2">id</th>
+                    <th>type</th>
                     <th>status</th>
                     <th>amount</th>
-                    <th>currency</th>
-                    <th>createdAt</th>
-                    
+                    <th>asset</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiblePayments.map(p => (
-                    <tr key={p.paymentId} className="border-t border-slate-800 hover:bg-slate-800/60 cursor-pointer" onClick={() => setSelectedPayment(p)}>
-                      <td className="py-2">payments</td>
-                      <td className="font-mono">{p.paymentId}</td>
-                      <td className="font-mono text-xs">{p.normalizedEvent.pspAccountId}</td>
-                      <td>{p.status}</td>
-                      <td>{(p.normalizedEvent.amountMinor/100).toFixed(2)}</td>
-                      <td>{p.normalizedEvent.currency}</td>
-                      <td className="text-xs">{new Date(p.createdAt).toLocaleString()}</td>
-                      
+                    <tr key={p.paymentId} className="border-t border-slate-800 hover:bg-slate-800/60">
+                      <td className="py-2 font-mono text-xs" title={p.paymentId}>{p.paymentId.slice(0,10)}…</td>
+                      <td className="text-xs">{p.rawPspEvent?.type || p.rawPspEvent?.Type || p.rawPspEvent?.eventCode || p.rawPspEvent?.scheme || p.rawPspEvent?.Type || '—'}</td>
+                      <td className="text-xs">{p.status}</td>
+                      <td className="text-xs">{p.rawPspEvent?.amount ?? p.normalizedEvent.amountMinor}</td>
+                      <td className="text-xs">{p.rawPspEvent?.asset || p.normalizedEvent.currency}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -602,6 +645,7 @@ export function ConnectivityVisualizer() {
           )}
         </div>
       </div>
+      <LiveAPIMonitor title="Formance Payments v3" baseEndpoint="https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/payments/v3" filterPrefix="/api/payments/v3" />
     </div>
   )
 }

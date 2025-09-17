@@ -134,7 +134,17 @@ const mockAPICalls: Omit<LiveAPICall, 'id' | 'timestamp' | 'duration'>[] = [
   }
 ]
 
-export function LiveAPIMonitor() {
+type LiveAPIMonitorProps = {
+  title?: string
+  baseEndpoint?: string
+  filterPrefix?: string // only show calls whose endpoint starts with this prefix (e.g., '/api/payments/v3')
+}
+
+export function LiveAPIMonitor({
+  title = 'Formance Ledger v2',
+  baseEndpoint = 'https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/ledger/v2',
+  filterPrefix
+}: LiveAPIMonitorProps) {
   const [apiCalls, setApiCalls] = useState<LiveAPICall[]>([])
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -142,6 +152,9 @@ export function LiveAPIMonitor() {
   useEffect(() => {
     const handler = (e: any) => {
       const d = e.detail || {}
+      if (filterPrefix && typeof d.endpoint === 'string' && !d.endpoint.includes(filterPrefix)) {
+        return
+      }
       const call: LiveAPICall = {
         id: `api_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         method: d.method || 'GET',
@@ -224,7 +237,7 @@ export function LiveAPIMonitor() {
         <div className="flex items-center space-x-2">
           <Activity className="h-5 w-5 text-emerald-500" />
           <h3 className="text-lg font-medium text-slate-100">Live API Monitor</h3>
-          <span className="text-sm text-slate-400">Formance Ledger v2</span>
+          <span className="text-sm text-slate-400">{title}</span>
         </div>
         <div className="flex items-center space-x-2">
           <button
@@ -249,9 +262,7 @@ export function LiveAPIMonitor() {
         <div className="flex items-center space-x-2 text-sm">
           <Code className="h-4 w-4 text-slate-300" />
           <span className="font-medium text-slate-200">API Endpoint:</span>
-          <code className="bg-slate-800 px-2 py-1 rounded-md text-slate-200 text-xs">
-            https://htelokuekgot-tfyo.us-east-1.formance.cloud/api/ledger/v2
-          </code>
+          <code className="bg-slate-800 px-2 py-1 rounded-md text-slate-200 text-xs">{baseEndpoint}</code>
         </div>
       </div>
 
