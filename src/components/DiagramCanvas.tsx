@@ -131,8 +131,8 @@ export function DiagramCanvas({ graph, onRunTransaction, onSelectArrow, onNodeMo
             onMouseDown={onMouseDown}
             onClick={(e) => { e.stopPropagation(); if (!dragging) { setSelectedNodeElementId(a.elementId); onSelectNode && onSelectNode(a.elementId) } }}
           >
-            <div className="p-2 text-xs font-mono text-slate-400">{a.id}</div>
-            <div className="px-2 text-sm text-slate-100">{a.label}</div>
+            <div className="p-2 text-xs font-mono text-slate-400 truncate" title={a.id}>{a.id}</div>
+            <div className="px-2 text-sm text-slate-100 truncate" title={a.label}>{a.label}</div>
           </div>
         )
       })}

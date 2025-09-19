@@ -344,8 +344,9 @@ export function EditableDiagramCanvas({
           >
             {!isEditingId ? (
               <div 
-                className="p-2 text-xs font-mono text-slate-300 cursor-text" 
+                className="p-2 text-xs font-mono text-slate-300 cursor-text truncate" 
                 onDoubleClick={(e) => startEditingAccountId(e, a)}
+                title={a.id || '<placeholder>'}
               >
                 {a.id || '<placeholder>'}
               </div>
@@ -364,7 +365,7 @@ export function EditableDiagramCanvas({
                 />
               </div>
             )}
-            <div className="px-2 pb-2 text-[11px] text-slate-400">
+            <div className="px-2 pb-2 text-[11px] text-slate-400 truncate" title={primaryBalance}>
               {primaryBalance}
             </div>
           </div>

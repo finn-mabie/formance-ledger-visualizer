@@ -205,14 +205,14 @@ export async function searchBalances(ledger: string, filter: any) {
     params.set('query', JSON.stringify(filter))
   }
   const q = params.toString()
-  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/account-balances${q ? `?${q}` : ''}`
+  const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/aggregate/balances${q ? `?${q}` : ''}`
   const start = performance.now()
   try {
     emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
     const res = await fetch(endpoint)
     const data = await res.json().catch(() => ({}))
     emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: filter, response: data, statusCode: res.status, duration: performance.now() - start })
-    if (!res.ok) throw new Error('Failed to fetch account balances')
+    if (!res.ok) throw new Error('Failed to fetch aggregate balances')
     return data
   } catch (e) {
     emitApiCall({ method: 'GET', endpoint, status: 'error', request: filter, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })

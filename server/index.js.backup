@@ -14,8 +14,8 @@ const ORCHESTRATION_BASE = `${FOR_BASE}/api/orchestration/v2`
 const RECONCILIATION_BASE = `${FOR_BASE}/api/reconciliation`
 
 // Default credentials (can be overridden by /api/credentials POST)
-let defaultClientId = process.env.FORMANCE_CLIENT_ID || '38c6862b-327c-4c7c-b93c-00c0fac5a05f';
-let defaultClientSecret = process.env.FORMANCE_CLIENT_SECRET || '6881226f-ad85-4206-aa67-ccdd1031dc2b';
+let defaultClientId = process.env.FORMANCE_CLIENT_ID;
+let defaultClientSecret = process.env.FORMANCE_CLIENT_SECRET;
 let defaultTokenEndpoint = process.env.FORMANCE_TOKEN_ENDPOINT || `${FOR_BASE}/api/auth/oauth/token`;
 
 // Initialize encryptedCreds with default credentials
@@ -276,22 +276,6 @@ app.get('/api/payments/v3/accounts/:id/balances', async (req, res) => {
     res.status(r.status).json(j)
   } catch (e) {
     res.status(500).json({ error: 'Failed to get account balances' })
-  }
-})
-
-// Payments v3: pools
-app.get("/api/payments/v3/pools", async (req, res) => {
-  try {
-    const token = await getAccessToken()
-    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""
-    const r = await fetch(`${PAYMENTS_BASE}/pools${qs}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const j = await r.json().catch(() => ({}))
-    res.status(r.status).json(j)
-  } catch (e) {
-    res.status(500).json({ error: "Failed to get payment pools", details: e.message })
   }
 })
 
@@ -617,7 +601,7 @@ app.get('/api/ledger/:ledger/account-balances', async (req, res) => {
     const token = await getAccessToken()
     const ledger = encodeURIComponent(req.params.ledger)
     const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
-    const r = await fetch(`${LEDGER_BASE}/${ledger}/account-balances${qs}`, {
+    const r = await fetch(`${LEDGER_BASE}/${ledger}/aggregate/balances${qs}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -628,22 +612,6 @@ app.get('/api/ledger/:ledger/account-balances', async (req, res) => {
   }
 })
 
-
-app.get('/api/ledger/:ledger/aggregate/balances', async (req, res) => {
-  try {
-    const token = await getAccessToken()
-    const ledger = encodeURIComponent(req.params.ledger)
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ""
-    const r = await fetch(`${LEDGER_BASE}/${ledger}/aggregate/balances${qs}`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const j = await r.json().catch(() => ({}))
-    res.status(r.status).json(j)
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to load aggregate balances', details: e.message })
-  }
-})
 // POST endpoint for creating transactions
 app.post('/api/ledger/:ledger/transactions', async (req, res) => {
   try {

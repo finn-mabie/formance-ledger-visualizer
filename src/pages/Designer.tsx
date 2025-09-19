@@ -3,6 +3,7 @@ import { Plus, ArrowRightLeft, Download, Trash2, Play, Save, Send, RefreshCcw, S
 import { NormalizedGraph, AccountNode, TxnEdge, mergeMapping } from '@/services/diagramAdapter'
 import { EditableDiagramCanvas } from '@/components/EditableDiagramCanvas'
 import { LiveAPIMonitor } from '@/components/LiveAPIMonitor'
+import { QueryBuilder } from '@/components/QueryBuilder'
 import { createTransaction, listAccounts, listAccountsWithBalances, listAllAccountsWithBalances, updateAccountMetadata, updateTransactionMetadata, searchTransactions, searchVolumes, searchAccounts, searchBalances } from '@/services/ledgerAdapter'
 
 export function Designer({ title = 'Diagram Designer', initialAccounts = [], initialTransactions = [] as TxnEdge[] }: { title?: string; initialAccounts?: AccountNode[]; initialTransactions?: TxnEdge[] }) {
@@ -766,41 +767,30 @@ function QueryExplorer({ ledger, onStatus }: { ledger: string; onStatus: (s: str
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <label className="label">Resource</label>
-        <select className="input h-10 w-48" value={resource} onChange={(e) => setResource(e.target.value as any)}>
+        <select className="input h-10 w-48" value={resource} onChange={(e) => {
+          setResource(e.target.value as any)
+          setResult(null) // Clear previous result when switching resources
+        }}>
           <option value="transactions">List transactions</option>
           <option value="balances">Aggregate balances</option>
           <option value="volumes">Volumes</option>
           <option value="accounts">Accounts</option>
         </select>
       </div>
-      <div>
-        <label className="label">Filter (JSON)</label>
-        <textarea
-          className="input min-h-[120px] font-mono text-xs"
-          placeholder='{"$match": {"source": "order::pending"}}'
-          value={queryText}
-          onChange={(e) => setQueryText(e.target.value)}
-        />
-        <div className="text-xs text-slate-400 mt-1">
-          See filtering syntax in the docs: <a className="underline" target="_blank" rel="noreferrer" href="https://docs.formance.com/modules/ledger/working-with-the-ledger/filtering-queries#filtering-queries">Filtering queries</a>
-        </div>
-      </div>
+      
+      {/* Visual Query Builder */}
+      <QueryBuilder 
+        resource={resource} 
+        onQueryChange={setQueryText}
+      />
+      
       <div className="flex items-center gap-2">
         <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={runQuery} disabled={loading}>
           <Search className="h-4 w-4" />
           <span>{loading ? 'Running…' : 'Run query'}</span>
-        </button>
-        <button className="btn-secondary inline-flex items-center gap-2 px-3 h-9" onClick={() => {
-          try {
-            const pretty = JSON.stringify(queryText ? JSON.parse(queryText) : {}, null, 2)
-            setQueryText(pretty)
-          } catch {}
-        }}>
-          <Wand2 className="h-4 w-4" />
-          <span>Beautify</span>
         </button>
       </div>
       {result && (
@@ -808,60 +798,90 @@ function QueryExplorer({ ledger, onStatus }: { ledger: string; onStatus: (s: str
           {/* Accounts */}
           {resource === 'accounts' && (
             <div className="max-h-64 overflow-auto space-y-2">
-              {(result.cursor?.data || result.data || []).map((row: any, idx: number) => (
-                <div key={row.address || row.account || idx} className="p-2 border border-slate-700 rounded text-left hover:bg-slate-800">
-                  <div className="text-sm font-mono text-slate-100">{row.address || row.account}</div>
-                  <div className="text-xs text-slate-400">
-                    {row.volumes ? (
-                      Object.keys(row.volumes).length === 0 ? '—' : Object.entries(row.volumes).map(([asset, vol]: any) => `${asset}: ${vol.balance}`).join(' • ')
-                    ) : row.balances ? (
-                      Object.keys(row.balances).length === 0 ? '—' : Object.entries(row.balances).map(([asset, bal]: any) => `${asset}: ${bal}`).join(' • ')
-                    ) : (
-                      row.metadata ? Object.keys(row.metadata).length + ' metadata fields' : '—'
-                    )}
+              {Array.isArray(result.cursor?.data || result.data) ? (
+                (result.cursor?.data || result.data || []).map((row: any, idx: number) => (
+                  <div key={row.address || row.account || idx} className="p-2 border border-slate-700 rounded text-left hover:bg-slate-800">
+                    <div className="text-sm font-mono text-slate-100 truncate">{row.address || row.account}</div>
+                    <div className="text-xs text-slate-400 truncate">
+                      {row.volumes ? (
+                        Object.keys(row.volumes).length === 0 ? '—' : Object.entries(row.volumes).map(([asset, vol]: any) => `${asset}: ${vol.balance}`).join(' • ')
+                      ) : row.balances ? (
+                        Object.keys(row.balances).length === 0 ? '—' : Object.entries(row.balances).map(([asset, bal]: any) => `${asset}: ${bal}`).join(' • ')
+                      ) : (
+                        row.metadata ? Object.keys(row.metadata).length + ' metadata fields' : '—'
+                      )}
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="p-2 border border-slate-700 rounded text-slate-400">
+                  No account data available
                 </div>
-              ))}
+              )}
             </div>
           )}
           {/* Transactions */}
           {resource === 'transactions' && (
             <div className="max-h-64 overflow-auto space-y-2">
-              {(result.cursor?.data || result.data || []).map((tx: any) => (
-                <div key={tx.id} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
-                  <div className="text-sm text-slate-100 font-mono">{tx.id}</div>
-                  <div className="text-xs text-slate-400">
-                    {(tx.postings || []).map((p: any, i: number) => (
-                      <span key={i} className="mr-2">{p.source} → {p.destination} [{p.asset} {p.amount}]</span>
-                    ))}
+              {Array.isArray(result.cursor?.data || result.data) ? (
+                (result.cursor?.data || result.data || []).map((tx: any) => (
+                  <div key={tx.id} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                    <div className="text-sm text-slate-100 font-mono truncate">{tx.id}</div>
+                    <div className="text-xs text-slate-400 truncate">
+                      {(tx.postings || []).map((p: any, i: number) => (
+                        <span key={i} className="mr-2">{p.source} → {p.destination} [{p.asset} {p.amount}]</span>
+                      ))}
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="p-2 border border-slate-700 rounded text-slate-400">
+                  No transaction data available
                 </div>
-              ))}
+              )}
             </div>
           )}
           {/* Volumes */}
           {resource === 'volumes' && (
             <div className="max-h-64 overflow-auto space-y-2">
-              {(result.cursor?.data || result.data || []).map((v: any, idx: number) => (
-                <div key={idx} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
-                  <div className="text-sm text-slate-100 font-mono">{v.account} • {v.asset}</div>
-                  <div className="text-xs text-slate-400">balance: {v.balance}</div>
+              {Array.isArray(result.cursor?.data || result.data) ? (
+                (result.cursor?.data || result.data || []).map((v: any, idx: number) => (
+                  <div key={idx} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                    <div className="text-sm text-slate-100 font-mono truncate">{v.account} • {v.asset}</div>
+                    <div className="text-xs text-slate-400 truncate">
+                      <span className="text-green-400">In: {v.input || 0}</span> • 
+                      <span className="text-red-400"> Out: {v.output || 0}</span> • 
+                      <span className="text-slate-300"> Balance: {v.balance || 0}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-2 border border-slate-700 rounded text-slate-400">
+                  No volume data available
                 </div>
-              ))}
+              )}
             </div>
           )}
           {/* Aggregated Balances */}
           {resource === 'balances' && (
             <div className="max-h-64 overflow-auto space-y-2">
-              {(result.data || []).map((row: any, idx: number) => (
-                <div key={row.account || idx} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
-                  <div className="text-sm text-slate-100 font-mono">{row.account}</div>
-                  <div className="text-xs text-slate-400">
-                    {row.balances && Object.keys(row.balances).length > 0 ?
-                      Object.entries(row.balances).map(([asset, bal]: any) => `${asset}: ${bal}`).join(' • ') : '—'}
+              {result.data && typeof result.data === 'object' ? (
+                <div className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                  <div className="text-sm text-slate-100 font-mono mb-2 truncate">Aggregated Balances</div>
+                  <div className="text-xs text-slate-400 space-y-1">
+                    {Object.entries(result.data).map(([asset, balance]: any) => (
+                      <div key={asset} className="flex justify-between">
+                        <span className="font-mono truncate">{asset}:</span>
+                        <span className="text-slate-300 truncate">{balance}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              ) : (
+                <div className="p-2 border border-slate-700 rounded text-slate-400">
+                  No balance data available
+                </div>
+              )}
             </div>
           )}
         </div>
