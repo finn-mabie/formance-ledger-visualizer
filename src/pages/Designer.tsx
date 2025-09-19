@@ -610,9 +610,10 @@ send [USD 50] (
           </div>
         </div>
         <div className="card space-y-3 hover:shadow-md transition-shadow">
-          <div className="text-sm font-medium">Account Metadata</div>
-          {!selectedNodeEl && <div className="text-sm text-slate-400">Select an account to add metadata</div>}
-          {selectedNodeEl && selectedNode && (
+          <div className="text-sm font-medium">
+            {selectedNodeEl ? 'Account Metadata' : selected ? 'Transaction Metadata' : 'Account Metadata'}
+          </div>
+          {selectedNodeEl ? (
             <>
               <div className="text-xs text-slate-400 mb-2">
                 Account: <span className="font-mono">{selectedNode.id}</span>
@@ -652,40 +653,24 @@ send [USD 50] (
               {/* Delete moved to canvas toolbar */}
               {metaSuccess && <div className="text-xs text-emerald-400">{metaSuccess}</div>}
             </>
-          )}
-        </div>
-        <div className="card space-y-3 hover:shadow-md transition-shadow">
-          <div className="text-sm font-medium">{selected ? 'Transaction Metadata' : 'Query Explorer'}</div>
-          {!selected && (
-            <QueryExplorer 
-              ledger={ledger}
-              onStatus={setStatus}
-            />
-          )}
-          {selected && (
+          ) : selected ? (
             <>
               <div className="text-xs text-slate-400 mb-2">
                 Transaction: <span className="font-mono">{selected.id}</span><br/>
                 {selected.fromId} → {selected.toId}
               </div>
-              <div className="text-xs text-slate-400">
-                Double-click arrow label to edit amount/asset directly
+              <div className="text-xs text-slate-400 mb-2">
+                Amount: {selected.amount} {selected.asset}
               </div>
-              <TransactionMetadataEditor 
-                value={Object.fromEntries(
-                  Object.entries(selected.metadata || {}).filter(([k]) => k !== 'amount' && k !== 'asset')
-                )}
-                onSubmit={async (metadata) => {
-                  try {
-                    setStatus('Updating transaction metadata...')
-                    await updateTransactionMetadata(ledger, selected.id, metadata)
-                    updateTransaction(selected.id, { metadata: { ...(selected.metadata || {}), ...metadata } })
-                    setStatus('Updated transaction metadata')
-                  } catch (e: any) {
-                    setStatus(`Failed to update transaction metadata: ${e.message}`)
-                  }
-                }}
-              />
+              <div>
+                <label className="label">Metadata (Read-only)</label>
+                <textarea 
+                  className="input min-h-[120px] font-mono text-xs bg-slate-800/50" 
+                  value={JSON.stringify(selected.metadata || {}, null, 2)}
+                  readOnly
+                  placeholder='No metadata'
+                />
+              </div>
               <div className="flex items-center gap-2">
                 <button className="btn-primary inline-flex items-center gap-2 px-3 h-9" onClick={() => runTxn(selected.id)}>
                   <Play className="h-4 w-4" />
@@ -693,9 +678,20 @@ send [USD 50] (
                 </button>
                 {txnSuccess && <span className="text-xs text-emerald-400">{txnSuccess}</span>}
               </div>
-              {/* Delete moved to canvas toolbar */}
             </>
+          ) : (
+            <div className="text-sm text-slate-400">Select an account to add metadata</div>
           )}
+        </div>
+        <div className="card space-y-3 hover:shadow-md transition-shadow">
+          <div className="text-sm font-medium">Query Explorer</div>
+          <QueryExplorer 
+            ledger={ledger}
+            onStatus={setStatus}
+            txns={txns}
+            setTxns={setTxns}
+            setSelectedTxnIds={setSelectedTxnIds}
+          />
         </div>
       </div>
       
@@ -735,7 +731,19 @@ function TransactionMetadataEditor({ value, onSubmit }: { value: Record<string, 
   )
 }
 
-function QueryExplorer({ ledger, onStatus }: { ledger: string; onStatus: (s: string) => void }) {
+function QueryExplorer({ 
+  ledger, 
+  onStatus, 
+  txns, 
+  setTxns, 
+  setSelectedTxnIds 
+}: { 
+  ledger: string; 
+  onStatus: (s: string) => void;
+  txns: TxnEdge[];
+  setTxns: (txns: TxnEdge[] | ((prev: TxnEdge[]) => TxnEdge[])) => void;
+  setSelectedTxnIds: (ids: string[]) => void;
+}) {
   const [resource, setResource] = useState<'transactions' | 'accounts' | 'volumes' | 'balances'>('transactions')
   const [queryText, setQueryText] = useState<string>('')
   const [result, setResult] = useState<any>(null)
@@ -825,7 +833,29 @@ function QueryExplorer({ ledger, onStatus }: { ledger: string; onStatus: (s: str
             <div className="max-h-64 overflow-auto space-y-2">
               {Array.isArray(result.cursor?.data || result.data) ? (
                 (result.cursor?.data || result.data || []).map((tx: any) => (
-                  <div key={tx.id} className="p-2 border border-slate-700 rounded hover:bg-slate-800">
+                  <div 
+                    key={tx.id} 
+                    className="p-2 border border-slate-700 rounded hover:bg-slate-800 cursor-pointer"
+                    onClick={() => {
+                      // Find the transaction in the main transactions list and select it
+                      const existingTx = txns.find(t => t.id === tx.id)
+                      if (existingTx) {
+                        setSelectedTxnIds([tx.id])
+                      } else {
+                        // If transaction not in main list, add it temporarily
+                        const newTx = {
+                          id: tx.id,
+                          fromId: tx.postings?.[0]?.source || '',
+                          toId: tx.postings?.[0]?.destination || '',
+                          amount: tx.postings?.[0]?.amount || 0,
+                          asset: tx.postings?.[0]?.asset || 'USD',
+                          metadata: tx.metadata || {}
+                        }
+                        setTxns(prev => [...prev, newTx])
+                        setSelectedTxnIds([tx.id])
+                      }
+                    }}
+                  >
                     <div className="text-sm text-slate-100 font-mono truncate">{tx.id}</div>
                     <div className="text-xs text-slate-400 truncate">
                       {(tx.postings || []).map((p: any, i: number) => (

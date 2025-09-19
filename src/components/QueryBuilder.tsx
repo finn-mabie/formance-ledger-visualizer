@@ -16,15 +16,7 @@ interface QueryBuilderProps {
 
 export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
   const [operator, setOperator] = useState<'and' | 'or'>('and')
-  const [conditions, setConditions] = useState<QueryCondition[]>([
-    {
-      id: '1',
-      operation: 'match',
-      field: '',
-      value: '',
-      fieldType: 'address'
-    }
-  ])
+  const [conditions, setConditions] = useState<QueryCondition[]>([])
 
   // Field options based on resource type
   const getFieldOptions = () => {
@@ -136,19 +128,25 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
     const describeCondition = (condition: QueryCondition) => {
       const fieldName = getFieldName(condition)
       
+      // Check if value contains colon patterns for pattern matching
+      const isPatternMatch = condition.value && (
+        condition.value.endsWith(':') || 
+        condition.value.includes('::')
+      )
+      
       if (condition.operation === 'exists') {
         if (condition.fieldType === 'metadata') {
           return `metadata field "${condition.field}" exists`
         } else if (condition.fieldType === 'balance') {
           return `balance for asset "${condition.field}" exists`
         } else if (condition.fieldType === 'source') {
-          return `source account exists`
+          return `source account name exists`
         } else if (condition.fieldType === 'destination') {
-          return `destination account exists`
+          return `destination account name exists`
         } else if (condition.fieldType === 'address') {
-          return `account exists`
+          return `account name exists`
         } else if (condition.fieldType === 'account') {
-          return `account (source or destination) exists`
+          return `account name (source or destination) exists`
         } else {
           return `field "${fieldName}" exists`
         }
@@ -158,13 +156,21 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
         } else if (condition.fieldType === 'balance') {
           return `balance for asset "${condition.field}" not matching "${condition.value}"`
         } else if (condition.fieldType === 'source') {
-          return `source account is not "${condition.value}"`
+          return isPatternMatch ? 
+            `source account name not matching pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `source account name is not "${condition.value}"`
         } else if (condition.fieldType === 'destination') {
-          return `destination account is not "${condition.value}"`
+          return isPatternMatch ? 
+            `destination account name not matching pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `destination account name is not "${condition.value}"`
         } else if (condition.fieldType === 'address') {
-          return `account is not "${condition.value}"`
+          return isPatternMatch ? 
+            `account name not matching pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `account name is not "${condition.value}"`
         } else if (condition.fieldType === 'account') {
-          return `account (source or destination) is not "${condition.value}"`
+          return isPatternMatch ? 
+            `account name (source or destination) not matching pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `account name (source or destination) is not "${condition.value}"`
         } else {
           return `field "${fieldName}" not matching "${condition.value}"`
         }
@@ -182,21 +188,29 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
         } else if (condition.fieldType === 'balance') {
           return `balance for asset "${condition.field}" ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'source') {
-          return `source account ${operationText} "${condition.value}"`
+          return isPatternMatch ? 
+            `source account name matches pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `source account name ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'destination') {
-          return `destination account ${operationText} "${condition.value}"`
+          return isPatternMatch ? 
+            `destination account name matches pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `destination account name ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'address') {
-          return `account ${operationText} "${condition.value}"`
+          return isPatternMatch ? 
+            `account name matches pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `account name ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'account') {
-          return `account (source or destination) ${operationText} "${condition.value}"`
+          return isPatternMatch ? 
+            `account name (source or destination) matches pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `account name (source or destination) ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'reference') {
-          return `reference ${operationText} "${condition.value}"`
+          return isPatternMatch ? 
+            `reference matches pattern "${condition.value.replace(/::/g, ':*:').replace(/:$/, ':*')}"` :
+            `reference ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'timestamp') {
           return `timestamp ${operationText} "${condition.value}"`
         } else if (condition.fieldType === 'reverted') {
           return `reverted status ${operationText} "${condition.value}"`
-        } else if (condition.fieldType === 'address') {
-          return `address ${operationText} "${condition.value}"`
         } else {
           return `field "${fieldName}" ${operationText} "${condition.value}"`
         }
@@ -219,30 +233,23 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
 
   // Reset conditions when resource changes
   useEffect(() => {
-    setConditions([{
-      id: '1',
-      operation: 'match',
-      field: '',
-      value: '',
-      fieldType: 'address'
-    }])
+    setConditions([])
   }, [resource])
 
   const addCondition = () => {
+    const defaultFieldType = resource === 'transactions' ? 'account' : 'address'
     const newCondition: QueryCondition = {
       id: Date.now().toString(),
       operation: 'match',
       field: '',
       value: '',
-      fieldType: 'address'
+      fieldType: defaultFieldType as any
     }
     setConditions([...conditions, newCondition])
   }
 
   const removeCondition = (id: string) => {
-    if (conditions.length > 1) {
-      setConditions(conditions.filter(c => c.id !== id))
-    }
+    setConditions(conditions.filter(c => c.id !== id))
   }
 
   const updateCondition = (id: string, updates: Partial<QueryCondition>) => {
@@ -263,34 +270,41 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
 
   return (
     <div className="space-y-4">
-      {/* Operator Selection */}
-      <div className="flex items-center gap-2">
-        <label className="label">Combine conditions with:</label>
-        <select 
-          className="input h-10 w-32" 
-          value={operator} 
-          onChange={(e) => setOperator(e.target.value as 'and' | 'or')}
-          disabled={conditions.length < 2}
-        >
-          <option value="and">AND</option>
-          <option value="or">OR</option>
-        </select>
-      </div>
+      {/* Operator Selection - only show when there are 2+ conditions */}
+      {conditions.length >= 2 && (
+        <div className="flex items-center gap-2">
+          <label className="label">Combine conditions with:</label>
+          <select 
+            className="input h-10 w-32" 
+            value={operator} 
+            onChange={(e) => setOperator(e.target.value as 'and' | 'or')}
+          >
+            <option value="and">AND</option>
+            <option value="or">OR</option>
+          </select>
+        </div>
+      )}
+
+      {/* No conditions message */}
+      {conditions.length === 0 && (
+        <div className="p-4 bg-slate-800/50 border border-slate-700 rounded text-center text-slate-400">
+          No filters applied. Click "Add Condition" to start building your query.
+        </div>
+      )}
 
       {/* Conditions */}
-      <div className="space-y-3">
-        {conditions.map((condition, index) => (
+      {conditions.length > 0 && (
+        <div className="space-y-3">
+          {conditions.map((condition, index) => (
           <div key={condition.id} className="p-3 border border-slate-700 rounded bg-slate-800/50">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-sm text-slate-400">Condition {index + 1}</span>
-              {conditions.length > 1 && (
-                <button
-                  onClick={() => removeCondition(condition.id)}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
+              <button
+                onClick={() => removeCondition(condition.id)}
+                className="text-red-400 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -366,8 +380,9 @@ export function QueryBuilder({ resource, onQueryChange }: QueryBuilderProps) {
               )}
             </div>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Add Condition Button */}
       <button

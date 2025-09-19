@@ -141,15 +141,16 @@ export async function searchTransactions(ledger: string, filter: any) {
   const q = params.toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/transactions${q ? `?${q}` : ''}`
   const start = performance.now()
+  const requestParams = q ? Object.fromEntries(params.entries()) : null
   try {
-    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
+    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: requestParams, statusCode: 0 })
     const res = await fetch(endpoint)
     const data = await res.json().catch(() => ({}))
-    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: filter, response: data, statusCode: res.status, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: requestParams, response: data, statusCode: res.status, duration: performance.now() - start })
     if (!res.ok) throw new Error('Failed to list transactions')
     return data
   } catch (e) {
-    emitApiCall({ method: 'GET', endpoint, status: 'error', request: filter, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: 'error', request: requestParams, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
     throw e
   }
 }
@@ -165,15 +166,16 @@ export async function searchAccounts(ledger: string, filter: any, expandVolumes:
   const q = params.toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/accounts${q ? `?${q}` : ''}`
   const start = performance.now()
+  const requestParams = q ? Object.fromEntries(params.entries()) : null
   try {
-    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
+    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: requestParams, statusCode: 0 })
     const res = await fetch(endpoint)
     const data = await res.json().catch(() => ({}))
-    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: filter, response: data, statusCode: res.status, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: requestParams, response: data, statusCode: res.status, duration: performance.now() - start })
     if (!res.ok) throw new Error('Failed to list accounts')
     return data
   } catch (e) {
-    emitApiCall({ method: 'GET', endpoint, status: 'error', request: filter, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: 'error', request: requestParams, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
     throw e
   }
 }
@@ -186,15 +188,16 @@ export async function searchVolumes(ledger: string, filter: any) {
   const q = params.toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/volumes${q ? `?${q}` : ''}`
   const start = performance.now()
+  const requestParams = q ? Object.fromEntries(params.entries()) : null
   try {
-    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
+    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: requestParams, statusCode: 0 })
     const res = await fetch(endpoint)
     const data = await res.json().catch(() => ({}))
-    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: filter, response: data, statusCode: res.status, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: requestParams, response: data, statusCode: res.status, duration: performance.now() - start })
     if (!res.ok) throw new Error('Failed to list volumes')
     return data
   } catch (e) {
-    emitApiCall({ method: 'GET', endpoint, status: 'error', request: filter, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: 'error', request: requestParams, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
     throw e
   }
 }
@@ -207,15 +210,16 @@ export async function searchBalances(ledger: string, filter: any) {
   const q = params.toString()
   const endpoint = `/api/ledger/${encodeURIComponent(ledger)}/aggregate/balances${q ? `?${q}` : ''}`
   const start = performance.now()
+  const requestParams = q ? Object.fromEntries(params.entries()) : null
   try {
-    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: filter, statusCode: 0 })
+    emitApiCall({ method: 'GET', endpoint, status: 'pending', request: requestParams, statusCode: 0 })
     const res = await fetch(endpoint)
     const data = await res.json().catch(() => ({}))
-    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: filter, response: data, statusCode: res.status, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: res.ok ? 'success' : 'error', request: requestParams, response: data, statusCode: res.status, duration: performance.now() - start })
     if (!res.ok) throw new Error('Failed to fetch aggregate balances')
     return data
   } catch (e) {
-    emitApiCall({ method: 'GET', endpoint, status: 'error', request: filter, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
+    emitApiCall({ method: 'GET', endpoint, status: 'error', request: requestParams, response: { error: String(e) }, statusCode: 0, duration: performance.now() - start })
     throw e
   }
 }

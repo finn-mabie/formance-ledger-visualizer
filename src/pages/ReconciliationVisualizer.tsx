@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { 
   Plus, 
   Trash2, 
@@ -64,7 +64,7 @@ export default function ReconciliationVisualizer() {
     return formatDateForInput(new Date())
   })
 
-  const loadPolicies = async () => {
+  const loadPolicies = useCallback(async () => {
     setLoading(prev => ({ ...prev, policies: true }))
     try {
       const res = await listPolicies(100)
@@ -75,9 +75,9 @@ export default function ReconciliationVisualizer() {
     } finally {
       setLoading(prev => ({ ...prev, policies: false }))
     }
-  }
+  }, [])
 
-  const loadReconciliations = async () => {
+  const loadReconciliations = useCallback(async () => {
     setLoading(prev => ({ ...prev, reconciliations: true }))
     try {
       const res = await listReconciliations(100)
@@ -88,9 +88,9 @@ export default function ReconciliationVisualizer() {
     } finally {
       setLoading(prev => ({ ...prev, reconciliations: false }))
     }
-  }
+  }, [])
 
-  const loadPaymentPools = async () => {
+  const loadPaymentPools = useCallback(async () => {
     setLoading(prev => ({ ...prev, pools: true }))
     try {
       const res = await getPaymentPools()
@@ -101,7 +101,7 @@ export default function ReconciliationVisualizer() {
     } finally {
       setLoading(prev => ({ ...prev, pools: false }))
     }
-  }
+  }, [])
 
   const createNewPolicy = async () => {
     if (!newPolicy.name || !newPolicy.paymentsPoolID) {
@@ -205,7 +205,7 @@ export default function ReconciliationVisualizer() {
 
   useEffect(() => {
     loadPaymentPools() // Load payment pools on component mount
-  }, [])
+  }, [loadPaymentPools])
 
   useEffect(() => {
     if (tab === 'policies') {
@@ -213,7 +213,7 @@ export default function ReconciliationVisualizer() {
     } else {
       loadReconciliations()
     }
-  }, [tab])
+  }, [tab, loadPolicies, loadReconciliations])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
